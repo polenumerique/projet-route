@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Asphalte Libre — L'île</title>
+<title>Bulle de Route — L'île</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -201,7 +201,7 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
 
 <div id="title">
   <div id="titleCol">
-    <div id="logo">Asphalte<br>Libre</div>
+    <div id="logo">Bulle<br>de Route</div>
     <div class="lane"></div>
     <p id="tagline">Une île, huit quartiers et des portes qui s'ouvrent. Volez une voiture, dépensez votre argent, dormez à la planque. Pas de police, pour l'instant.</p>
     <div id="loadWrap"><div id="loadText">Construction de l'île…</div><div id="loadBar"><i></i></div></div>
@@ -239,6 +239,7 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
     <h2>Pause</h2>
     <div class="stats">
       <span>Argent</span><b id="stMoney">$0</b>
+      <span>Bulles dorées</span><b id="stPk">0 / 20</b>
       <span>Jour</span><b id="stDay">1</b>
       <span>Santé</span><b id="stHp">100</b>
     </div>
@@ -280,7 +281,7 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
     <div class="setting"><label for="sensRange">Sensibilité</label><input id="sensRange" type="range" min="20" max="200" value="100"></div>
     <div class="setting"><label for="qualRange">Qualité</label><input id="qualRange" type="range" min="0" max="2" value="2" step="1"></div>
     <div class="pauseBtns"><button class="btn" id="btnResume">Reprendre</button></div>
-    <p class="hint">La partie se sauvegarde quand vous dormez à la planque <span class="k">P</span>.</p>
+    <p class="hint">La partie se sauvegarde quand vous dormez à la planque <span class="k">P</span> et à chaque bulle dorée trouvée.</p>
   </div>
 </div>
 
@@ -2077,7 +2078,7 @@ const player = {
   ownedTops: [true, true, true, true, true, false, false, false],
   ownedBottoms: [true, true, true, true, false, false],
   ownedHair: [true, true, true, false, false, false],
-  day: 1, phase: 0, interior: null, door: null, hurtT: 0, lastHurt: 0
+  packages: new Set(), day: 1, phase: 0, interior: null, door: null, hurtT: 0, lastHurt: 0
 };
 let preview = null; // { slot: 'top'|'bottom'|'hair', idx } — essayage en cours, non payé
 function playerLook() {
@@ -3132,11 +3133,22 @@ function makePickup(kind, x, z) {
   const g = new THREE.Group(), k = kit(g);
   if (kind === 'heal') { k.box(0.7, 0.5, 0.45, 0xf2efe8, 0, 0, 0); k.box(0.36, 0.1, 0.47, 0xe4484c, 0, 0, 0, 'glow'); k.box(0.1, 0.36, 0.47, 0xe4484c, 0, 0, 0, 'glow'); }
   else if (kind === 'bat') { const b = k.cyl(0.05, 0.09, 1.1, 0xc8a06a, 0, 0, 0, 8, 'wood'); b.rotation.z = 1.2; }
+  else if (kind === 'package') { k.sph(0.45, 0xffd24a, 0, 0, 0, 'glow', 1, 1, 1, 14, 10); const r = k.cyl(0.75, 0.75, 0.06, 0xffe9a0, 0, 0, 0, 20, 'glow'); r.rotation.x = 1.2; }
   const m = mergeOne(g, WMAT.glow); m.castShadow = true;
   const y = groundH(x, z);
   m.position.set(x, y + 1, z); dyn.add(m);
   const p = { kind, x, z, y, m, t: rnd(0, 6), respawn: 0, active: true };
   pickups.push(p); return p;
+}
+const PACKAGE_SPOTS = [[-20, -95], [160, 150], [-330, -330], [110, -345], [-330, 95], [330, -300], [527, -512], [560, -400], [250, -570], [682, 118],
+  [565, 565], [-150, 570], [-565, 565], [-330, 560], [-520, -528], [180, -585], [-110, 330], [150, 290], [-575, -100], [395, -50]];
+function placePackages() {
+  PACKAGE_SPOTS.forEach(([x, z], i) => {
+    let px = x, pz = z;
+    for (let r = 0; r < 30 && (CW.blocked(px, 1, pz) || !walkable(px, pz)); r++) { const a = r * 2.4; px = x + Math.cos(a) * r * 1.5; pz = z + Math.sin(a) * r * 1.5; }
+    const p = makePickup('package', px, pz); p.id = i;
+    if (player.packages.has(i)) { p.active = false; p.m.visible = false; }
+  });
 }
 function updatePickups(dt) {
   const px = player.mode === 'drive' ? player.vehicle.x : player.x, pz = player.mode === 'drive' ? player.vehicle.z : player.z;
@@ -3149,10 +3161,19 @@ function updatePickups(dt) {
   for (const p of pickups) {
     if (!p.active) { if (p.respawn > 0) { p.respawn -= dt; if (p.respawn <= 0) { p.active = true; p.m.visible = true; } } continue; }
     p.t += dt; p.m.rotation.y = p.t * 1.8; p.m.position.y = p.y + 0.9 + Math.sin(p.t * 2.2) * 0.15;
+    if (p.kind === 'package' && Math.random() < dt * 6) FX.sparkle(p.x, p.m.position.y, p.z);
     const d = Math.hypot(p.x - px, p.z - pz);
-    if (d > rr) continue;
+    if (d > (p.kind === 'package' ? rr + 0.4 : rr)) continue;
     if (p.kind === 'heal') { if (player.health >= 100 || player.mode === 'drive') continue; heal(50); p.active = false; p.m.visible = false; p.respawn = 90; AU.buy(); toast('Trousse de soin : +50 santé'); }
     else if (p.kind === 'bat') { if (player.mode === 'drive') continue; giveWeapon('bat'); p.active = false; p.m.visible = false; p.respawn = player.weapons.bat ? 0 : 60; AU.buy(); showHelp(`Batte ramassée. ${kk('Clic')} pour frapper, ${kk('1')}${kk('2')}${kk('3')} ou la molette pour changer d'arme.`, 6); }
+    else if (p.kind === 'package') {
+      p.active = false; p.m.visible = false; player.packages.add(p.id); addMoney(250); AU.buy();
+      FX.explosion && FX.sparks(p.x, p.m.position.y, p.z, 30);
+      const n = player.packages.size;
+      bigMessage(`Bulle dorée ${n}/20`, n === 20 ? 'Toutes trouvées ! Prime de $5 000' : '+$250', '#ffd24a', 2.6);
+      if (n === 20) addMoney(5000);
+      saveGame();
+    }
   }
 }
 
@@ -3905,10 +3926,10 @@ function interact() {
 }
 
 // ---------- Sauvegarde ----------
-const SAVE_KEY = 'asphalteLibre.save.v2';
+const SAVE_KEY = 'bulleDeRoute.save.v2';
 function saveGame() {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ money: player.money, weapons: player.weapons, weapon: player.weapon, ammo: player.ammo, armor: player.armor, health: player.health, time: gameTime, day: player.day, top: player.top, bottom: player.bottom, hairIdx: player.hairIdx, ownedTops: player.ownedTops, ownedBottoms: player.ownedBottoms, ownedHair: player.ownedHair }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ money: player.money, weapons: player.weapons, weapon: player.weapon, ammo: player.ammo, armor: player.armor, health: player.health, time: gameTime, day: player.day, packages: [...player.packages], top: player.top, bottom: player.bottom, hairIdx: player.hairIdx, ownedTops: player.ownedTops, ownedBottoms: player.ownedBottoms, ownedHair: player.ownedHair }));
   } catch (e) { /* stockage indisponible */ }
 }
 function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
@@ -3998,7 +4019,7 @@ addEventListener('blur', () => { keys.clear(); mouseL = mouseR = false; });
 function pauseGame() {
   if (state !== 'play') return;
   state = 'pause'; keys.clear(); mouseL = mouseR = false; AU.horn(false);
-  $('stMoney').textContent = '$' + player.money.toLocaleString('fr-FR');
+  $('stMoney').textContent = '$' + player.money.toLocaleString('fr-FR'); $('stPk').textContent = player.packages.size + ' / 20';
   $('stDay').textContent = player.day; $('stHp').textContent = Math.round(player.health);
   drawBigMap(); $('pause').classList.add('show'); document.body.classList.remove('playing');
   if (AU.ctx) AU.ctx.suspend();
@@ -4157,9 +4178,11 @@ function startGame(save) {
     player.top = save.top || 0; player.bottom = save.bottom || 0; player.hairIdx = save.hairIdx || 0;
     player.weapons = Object.assign({ fists: true, bat: false, pistol: false }, save.weapons);
     player.weapon = player.weapons[save.weapon] ? save.weapon : 'fists';
+    player.packages = new Set(save.packages || []);
     gameTime = save.time || 17.4;
     buildPlayerModel();
   } else { gameTime = 17.4; }
+  placePackages();
   const flat = DOORS.find(d => d.interior === 'flat');
   if (save) { player.x = flat.x + flat.outX * 2; player.z = flat.z + flat.outZ * 2; }
   else { player.x = -55; player.z = -22; }
