@@ -2,14 +2,15 @@
 """
 Petit serveur local pour lancer Asphalte Libre.
 
-Nécessaire pour deux raisons :
+Nécessaire pour trois raisons :
 - le jeu charge carte.json avec fetch(), ce que les navigateurs interdisent
   quand la page est ouverte directement en double-cliquant (file://) ;
-- le gestionnaire de modèles (gestionnaire_modeles.html) a besoin de lister,
-  renommer, dupliquer et supprimer des fichiers dans modeles/, ce qu'une
-  page web ne peut pas faire seule : ce script expose une petite API pour ça
-  (voir API_ROOTS ci-dessous), limitée aux dossiers modeles/batiments et
-  modeles/decors.
+- editeur_jeu.html a besoin de lister, renommer, dupliquer et supprimer des
+  fichiers dans modeles/, ce qu'une page web ne peut pas faire seule : ce
+  script expose une petite API pour ça (voir API_ROOTS ci-dessous), limitée
+  aux dossiers modeles/batiments, modeles/decors et modeles/vehicules ;
+- le jeu lit aussi cette API au démarrage pour appliquer automatiquement les
+  véhicules personnalisés présents dans modeles/vehicules.
 
 Utilisation :
   Windows : double-clique sur serveur.py (si Python est associé aux .py),
@@ -35,10 +36,13 @@ import webbrowser
 PORT = 8000
 PAGE = 'index.html'
 
-# catégories exposées à l'API de gestion des modèles (voir gestionnaire_modeles.html)
+# catégories exposées à l'API de gestion des modèles (voir editeur_jeu.html) ;
+# le jeu (index.html) lit aussi 'vehicules' au démarrage pour appliquer les
+# habillages de véhicules personnalisés (voir loadVehicleOverrides côté jeu)
 API_ROOTS = {
     'batiments': 'modeles/batiments',
     'decors': 'modeles/decors',
+    'vehicules': 'modeles/vehicules',
 }
 NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]+\.json$')
 
@@ -94,6 +98,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.duplicate_model()
         if self.path == '/api/modeles/supprimer':
             return self.delete_model()
+        if self.path == '/api/modeles/enregistrer':
+            return self.save_model()
+        if self.path == '/api/carte/enregistrer':
+            return self.save_carte()
         self.send_error(404)
 
     def list_models(self):
@@ -146,6 +154,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self._json(500, {'error': str(e)})
 
+    def save_model(self):
+        try:
+            body = self._read_json_body()
+            dst = safe_path(body.get('cat'), body.get('name'))
+            data = body.get('data')
+            if not dst or data is None:
+                return self._json(400, {'error': 'Requête invalide'})
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=1)
+            self._json(200, {'ok': True})
+        except Exception as e:
+            self._json(500, {'error': str(e)})
+
+    def save_carte(self):
+        try:
+            body = self._read_json_body()
+            with open('carte.json', 'w', encoding='utf-8') as f:
+                json.dump(body, f, ensure_ascii=False, indent=1)
+            self._json(200, {'ok': True})
+        except Exception as e:
+            self._json(500, {'error': str(e)})
+
     def delete_model(self):
         try:
             body = self._read_json_body()
@@ -173,8 +204,8 @@ def main():
         print(' Asphalte Libre — serveur local')
         print('=' * 60)
         print(f' Jeu disponible sur : {url}')
-        print(' (les éditeurs .html du dossier, dont gestionnaire_modeles.html,')
-        print('  sont aussi accessibles depuis http://localhost:%d/)' % port)
+        print(' (editeur_jeu.html (carte / bâtiments / véhicules / décors)')
+        print('  est aussi accessible depuis http://localhost:%d/)' % port)
         print()
         print(' Ctrl+C pour arrêter le serveur.')
         print('=' * 60)

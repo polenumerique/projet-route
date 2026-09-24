@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Éditeur de jeu — Asphalte Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#15171a; --panel:#1d2024; --line:#2b2f34; --text:#f1efe8; --muted:#9a978d; --accent:#f2c230; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--text); font-family:'Barlow',sans-serif; overflow:hidden; }
+  #shell{ display:flex; flex-direction:column; height:100%; }
+  #topbar{ display:flex; align-items:center; gap:16px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto; }
+  #topbar h1{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-style:italic; font-size:20px; margin:0; white-space:nowrap; }
+  #topbar h1 span{ color:var(--accent); }
+  #tabbar{ display:flex; gap:6px; flex:1; }
+  #tabbar button{ background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:7px; padding:8px 16px; font:inherit; font-weight:700; font-size:13.5px; cursor:pointer; }
+  #tabbar button.active{ background:var(--accent); color:#141414; border-color:var(--accent); }
+  #apiState{ font-size:11.5px; padding:5px 10px; border-radius:6px; }
+  #apiState.ok{ color:#9ee08a; } #apiState.bad{ color:#e4848c; }
+  .pane{ flex:1; display:none; overflow:hidden; }
+  .pane.active{ display:flex; }
+  .viewport{ flex:1; position:relative; }
+  .viewport canvas{ display:block; width:100%; height:100%; }
+  .hint{ position:absolute; left:16px; bottom:12px; font-size:12px; color:#cfcabd; background:rgba(15,17,19,.55); padding:4px 9px; border-radius:5px; pointer-events:none; max-width:60%; }
+  .toolbar{ position:absolute; left:16px; top:14px; display:flex; gap:6px; flex-wrap:wrap; max-width:70%; }
+  .toolbar button{ background:rgba(15,17,19,.75); color:var(--text); border:1px solid var(--line); font-size:12.5px; border-radius:6px; padding:7px 10px; cursor:pointer; font-weight:700; }
+  .toolbar button.active{ background:var(--accent); color:#141414; border-color:var(--accent); }
+  .side{ width:250px; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; }
+  .sideHead{ padding:14px 14px 8px; }
+  .sub{ font-size:12px; color:var(--muted); line-height:1.4; }
+  .filelist{ flex:1; overflow-y:auto; padding:0 8px 8px; }
+  .fitem{ padding:8px 9px; border-radius:6px; cursor:pointer; margin-bottom:3px; border:1px solid transparent; font-size:12.5px; }
+  .fitem:hover{ background:#26292e; }
+  .fitem.sel{ border-color:var(--accent); background:#2a2410; }
+  .fitem .nm{ font-weight:700; }
+  .fitem .meta{ color:var(--muted); font-size:11px; margin-top:1px; }
+  .empty{ padding:16px 10px; color:var(--muted); font-size:12.5px; text-align:center; }
+  .panel{ width:320px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:14px; }
+  fieldset{ border:1px solid var(--line); border-radius:8px; margin:0 0 12px; padding:9px 11px 12px; }
+  legend{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:13px; color:var(--accent); padding:0 6px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  select, input[type=number], input[type=text], input[type=color]{ background:#0f1113; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:5px 7px; width:100%; font:inherit; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .row{ display:flex; gap:6px; }
+  .row > *{ flex:1; }
+  button{ font:inherit; cursor:pointer; }
+  .btn-main{ background:var(--accent); color:#141414; width:100%; margin-top:6px; border:0; border-radius:6px; padding:8px 12px; font-weight:700; }
+  .btn-ghost{ background:transparent; color:var(--text); box-shadow:inset 0 0 0 1.5px var(--line); width:100%; margin-top:6px; border:0; border-radius:6px; padding:8px 12px; font-weight:700; }
+  .btn-danger{ background:#7a2a2a; color:#fff; border:0; border-radius:6px; padding:8px 12px; font-weight:700; }
+  .btn-main:hover, .btn-ghost:hover, .btn-danger:hover{ filter:brightness(1.1); }
+  .status{ font-size:12px; color:var(--muted); margin-top:8px; min-height:16px; }
+  .status.ok{ color:#9ee08a; } .status.err{ color:#e4848c; }
+  #carte-side{ width:320px; }
+  #carte-side .sub{ margin-bottom:10px; }
+</style>
+</head>
+<body>
+<div id="shell">
+  <div id="topbar">
+    <h1>Éditeur de <span>jeu</span></h1>
+    <div id="tabbar">
+      <button data-tab="carte" class="active">Carte</button>
+      <button data-tab="batiments">Bâtiments</button>
+      <button data-tab="vehicules">Véhicules</button>
+      <button data-tab="decors">Décors</button>
+    </div>
+    <div id="apiState">…</div>
+  </div>
+
+  <!-- ============================== CARTE ============================== -->
+  <div class="pane active" id="pane-carte">
+    <div class="side" id="carte-side">
+      <div class="sideHead">
+        <div class="sub">Toute la carte du jeu vient d'ici. Place le départ, dessine les routes, les portes, les parkings, les zones piétonnes, puis pioche tes bâtiments/décors dans la bibliothèque à droite.</div>
+      </div>
+      <fieldset style="margin:0 10px 10px">
+        <legend>Fichier carte</legend>
+        <button class="btn-main" id="c-btnSave">Enregistrer carte.json</button>
+        <label>Importer une carte existante</label>
+        <input type="file" id="c-fileMap" accept=".json">
+        <button class="btn-ghost" id="c-btnReset">Nouvelle carte</button>
+        <div class="status" id="c-status"></div>
+      </fieldset>
+      <fieldset style="margin:0 10px 10px">
+        <legend>Compte</legend>
+        <div class="sub" id="c-counts" style="margin:0"></div>
+      </fieldset>
+    </div>
+    <div class="viewport" id="c-viewport">
+      <div class="toolbar" id="c-modebar">
+        <button data-m="spawn" class="active">Départ</button>
+        <button data-m="routes">Routes</button>
+        <button data-m="doors">Portes</button>
+        <button data-m="parking">Parkings</button>
+        <button data-m="peds">Piétons</button>
+        <button data-m="props">Objets</button>
+      </div>
+      <div class="hint" id="c-hint"></div>
+    </div>
+    <div class="panel" id="c-panel">
+      <fieldset id="c-panel-spawn">
+        <legend>Point de départ</legend>
+        <p class="sub" style="margin:0 0 8px">Clique le sol pour placer/déplacer le départ.</p>
+        <div class="row"><div><label>X</label><input type="number" id="c-spX" step="1"></div><div><label>Z</label><input type="number" id="c-spZ" step="1"></div></div>
+        <label>Orientation</label><input type="range" id="c-spFacing" min="0" max="360" value="0">
+      </fieldset>
+      <fieldset id="c-panel-routes" style="display:none">
+        <legend>Routes</legend>
+        <p class="sub" style="margin:0 0 8px">Clique pour ajouter un point à la route en cours.</p>
+        <label>Largeur</label><input type="range" id="c-roadWidth" min="4" max="30" value="12">
+        <div class="row"><input type="checkbox" id="c-roadUrban" checked style="width:auto;flex:0"><label style="margin:0" for="c-roadUrban">Urbaine (piétons/trafic)</label></div>
+        <button class="btn-main" id="c-btnNewRoad">Nouvelle route</button>
+        <button class="btn-ghost" id="c-btnUndoPoint">Annuler le dernier point</button>
+        <div id="c-roadList" style="margin-top:10px;max-height:200px;overflow-y:auto"></div>
+      </fieldset>
+      <fieldset id="c-panel-doors" style="display:none">
+        <legend>Portes</legend>
+        <label>Type</label>
+        <select id="c-doorInterior">
+          <option value="flat">Planque (dormir / sauvegarder)</option>
+          <option value="shop">Supérette</option>
+          <option value="guns">Armurerie</option>
+          <option value="hospital">Hôpital</option>
+          <option value="garage">Garage (réparation)</option>
+          <option value="club">Club</option>
+          <option value="clothes">Boutique de vêtements</option>
+          <option value="hair">Coiffeur</option>
+        </select>
+        <label>Nom affiché</label><input type="text" id="c-doorName" value="Planque">
+        <label>Lettre mini-carte</label><input type="text" id="c-doorBlip" maxlength="2" value="P">
+        <label>Orientation de sortie</label><input type="range" id="c-doorFacing" min="0" max="360" value="0">
+        <div id="c-doorList" style="margin-top:10px;max-height:190px;overflow-y:auto"></div>
+      </fieldset>
+      <fieldset id="c-panel-parking" style="display:none">
+        <legend>Places de parking</legend>
+        <label>Orientation</label><input type="range" id="c-parkHeading" min="0" max="360" value="0">
+        <div id="c-parkList" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+      </fieldset>
+      <fieldset id="c-panel-peds" style="display:none">
+        <legend>Zones de flânerie</legend>
+        <label>Rayon</label><input type="range" id="c-pedR" min="10" max="120" value="30">
+        <div id="c-pedList" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+      </fieldset>
+      <fieldset id="c-panel-props" style="display:none">
+        <legend>Bibliothèque (bâtiments + décors)</legend>
+        <div id="c-libList" style="max-height:220px;overflow-y:auto"></div>
+        <p class="sub" style="margin:8px 0 0">Sélectionne un modèle puis clique au sol pour le placer.</p>
+      </fieldset>
+      <fieldset id="c-panel-instance" style="display:none">
+        <legend>Objet sélectionné</legend>
+        <div id="c-instName" style="font-weight:700;font-size:13px;margin-bottom:6px"></div>
+        <div class="row"><div><label>X</label><input type="number" id="c-iX" step="1"></div><div><label>Z</label><input type="number" id="c-iZ" step="1"></div></div>
+        <label>Rotation</label><input type="range" id="c-iRy" min="0" max="360" value="0">
+        <label>Échelle</label><input type="range" id="c-iScale" min="20" max="300" value="100">
+        <div class="row"><button class="btn-ghost" id="c-btnDup">Dupliquer</button><button class="btn-danger" id="c-btnDel">Supprimer</button></div>
+      </fieldset>
+    </div>
+  </div>
+
+  <!-- ==================== BÂTIMENTS / VÉHICULES / DÉCORS ==================== -->
+  <div class="pane" id="pane-batiments"></div>
+  <div class="pane" id="pane-vehicules"></div>
+  <div class="pane" id="pane-decors"></div>
+</div>
+
+<template id="tpl-asset">
+  <div class="side">
+    <div class="sideHead">
+      <div class="sub" data-role="desc"></div>
+    </div>
+    <div class="filelist" data-role="filelist"></div>
+    <div style="padding:8px"><button class="btn-ghost" data-role="reload">Rafraîchir la liste</button></div>
+  </div>
+  <div class="viewport">
+    <div class="toolbar" data-role="toolbar">
+      <button data-add="box">+ Bloc</button>
+      <button data-add="cyl">+ Cylindre</button>
+      <button data-add="sph">+ Sphère</button>
+      <button data-add="prism">+ Toit</button>
+    </div>
+    <div class="hint">Glisser : orbiter · molette : zoom · clic sur une pièce : sélectionner</div>
+  </div>
+  <div class="panel">
+    <fieldset>
+      <legend>Modèle</legend>
+      <label>Nom</label><input type="text" data-role="modelName">
+      <div data-role="targetTypeField" style="display:none">
+        <label>Type de véhicule visé</label>
+        <select data-role="targetType"></select>
+      </div>
+      <div class="row">
+        <button class="btn-main" data-role="save">Enregistrer</button>
+        <button class="btn-ghost" data-role="new">Nouveau</button>
+      </div>
+      <div class="status" data-role="status"></div>
+    </fieldset>
+    <fieldset data-role="fProps" style="display:none">
+      <legend>Pièce sélectionnée</legend>
+      <label>Type</label><input type="text" data-role="pType" disabled>
+      <div class="row">
+        <div><label>X</label><input type="number" data-role="pX" step="0.1"></div>
+        <div><label>Y</label><input type="number" data-role="pY" step="0.1"></div>
+        <div><label>Z</label><input type="number" data-role="pZ" step="0.1"></div>
+      </div>
+      <div data-role="sizeFields"></div>
+      <label>Couleur</label><input type="color" data-role="pColor" value="#c9c2b4">
+      <label>Matériau</label>
+      <select data-role="pCat">
+        <option value="base">Mur / béton</option>
+        <option value="metal">Métal</option>
+        <option value="glass">Vitre</option>
+        <option value="glassLit">Vitre éclairée</option>
+        <option value="glow">Néon / lumineux</option>
+        <option value="wood">Bois</option>
+        <option value="water">Eau</option>
+      </select>
+      <button class="btn-ghost" data-role="dup">Dupliquer</button>
+      <button class="btn-danger" data-role="del" style="width:100%;margin-top:8px">Supprimer la pièce</button>
+    </fieldset>
+    <fieldset data-role="fEmpty"><div class="empty">Ajoute une pièce, ou clique une pièce existante pour l'éditer.</div></fieldset>
+  </div>
+</template>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = (id, root) => (root || document).getElementById(id);
+const VT_KEYS = [
+  ['citadine', 'Citadine'], ['berline', 'Berline'], ['taxi', 'Taxi'], ['coupe', 'Coupé'], ['bolide', 'Bolide'],
+  ['break', 'Break'], ['van', 'Camionnette'], ['pickup', 'Pick-up'], ['camion', 'Camion'], ['buggy', 'Buggy'],
+  ['moto', 'Moto'], ['velo', 'Vélo'], ['ambulance', 'Ambulance'], ['firetruck', 'Camion de pompiers'], ['policecar', 'Voiture de police']
+];
+
+// =====================================================================
+// Primitives partagées (mêmes conventions que le jeu)
+// =====================================================================
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const PRISM = (() => {
+  const a = -0.5, b = 0.5, v = [[a, 0, -0.5], [a, 0, 0.5], [a, 1, 0], [b, 0, -0.5], [b, 0, 0.5], [b, 1, 0]];
+  const tris = [[0, 1, 2], [3, 5, 4], [0, 5, 3], [0, 2, 5], [1, 5, 2], [1, 4, 5], [0, 4, 1], [0, 3, 4]];
+  const pos = []; for (const t of tris) for (const i of t) pos.push(...v[i]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+})();
+const MATS = new Map();
+function matFor(color, cat) {
+  const key = color + '|' + cat; let m = MATS.get(key); if (m) return m;
+  const lit = cat === 'glassLit';
+  m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: cat === 'glass' || lit ? 0.12 : (cat === 'wood' ? 0.7 : 0.85), metalness: cat === 'glass' || lit ? 0.5 : (cat === 'metal' ? 0.6 : 0) });
+  if (lit || cat === 'glow') { m.emissive = new THREE.Color(cat === 'glow' ? color : 0xffc06a); m.emissiveIntensity = 0.55; }
+  return MATS.set(key, m), m;
+}
+function meshFromPart(p) {
+  const color = typeof p.color === 'string' ? parseInt(p.color.replace('#', ''), 16) : p.color;
+  const cat = p.cat || 'base';
+  let m;
+  if (p.prim === 'cyl') { m = new THREE.Mesh(new THREE.CylinderGeometry(p.rt, p.rb, 1, p.seg || 12), matFor(color, cat)); m.scale.set(1, p.h, 1); }
+  else if (p.prim === 'sph') { m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), matFor(color, cat)); m.scale.set(p.r * (p.sx || 1), p.r * (p.sy || 1), p.r * (p.sz || 1)); }
+  else if (p.prim === 'prism') { m = new THREE.Mesh(PRISM, matFor(color, cat)); m.scale.set(p.len, p.h, p.depth); if (p.ry) m.rotation.y = p.ry; }
+  else { m = new THREE.Mesh(UNIT_BOX, matFor(color, cat)); m.scale.set(p.w, p.h, p.d); if (p.ry) m.rotation.y = p.ry; }
+  m.position.set(p.x, p.y, p.z); m.castShadow = true;
+  return m;
+}
+
+// =====================================================================
+// API fichiers (voir serveur.py) — utilisée par les 3 onglets de modèles
+// et la bibliothèque de l'onglet Carte
+// =====================================================================
+const Api = {
+  ok: null,
+  async list() {
+    try {
+      const r = await fetch('/api/modeles', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      Api.ok = true; return await r.json();
+    } catch (e) { Api.ok = false; return { batiments: [], decors: [], vehicules: [] }; }
+  },
+  async get(cat, file) { return (await fetch(`modeles/${cat}/${file}`, { cache: 'no-store' })).json(); },
+  async save(cat, name, data) { return Api.call('/api/modeles/enregistrer', { cat, name, data }); },
+  async rename(cat, name, newName) { return Api.call('/api/modeles/renommer', { cat, name, newName }); },
+  async duplicate(cat, name, newName) { return Api.call('/api/modeles/dupliquer', { cat, name, newName }); },
+  async remove(cat, name) { return Api.call('/api/modeles/supprimer', { cat, name }); },
+  async call(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    return j;
+  }
+};
+function refreshApiState() {
+  const el = $('apiState');
+  el.textContent = Api.ok === false ? 'Serveur : API indisponible (lance serveur.py)' : 'Serveur : OK';
+  el.className = Api.ok === false ? 'bad' : 'ok';
+}
+
+// =====================================================================
+// Onglets
+// =====================================================================
+const panes = { carte: $('pane-carte'), batiments: $('pane-batiments'), vehicules: $('pane-vehicules'), decors: $('pane-decors') };
+const resizers = [];
+document.querySelectorAll('#tabbar button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('#tabbar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    for (const k in panes) panes[k].classList.toggle('active', k === btn.dataset.tab);
+    resizers.forEach(fn => fn());
+  };
+});
+
+// =====================================================================
+// Éditeur générique de modèle en primitives (Bâtiments / Véhicules / Décors)
+// =====================================================================
+function createAssetEditor({ pane, category, kind, desc, defaultParts, defaultName, hasTargetType }) {
+  const tpl = $('tpl-asset').content.cloneNode(true);
+  pane.appendChild(tpl);
+  const root = pane;
+  const q = role => root.querySelector(`[data-role="${role}"]`);
+  q('desc').textContent = desc;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  const viewport = root.querySelector('.viewport');
+  viewport.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x223038);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x33422a, 0.95));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(20, 30, 15); scene.add(sun);
+  scene.add(new THREE.GridHelper(60, 30, 0x445055, 0x2a3338));
+
+  function resize() { const r = viewport.getBoundingClientRect(); if (!r.width || !r.height) return; renderer.setSize(r.width, r.height); camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); }
+  addEventListener('resize', resize); resizers.push(resize);
+
+  let camYaw = 0.7, camPitch = 0.4, camDist = 24, camTarget = new THREE.Vector3(0, 1.5, 0);
+  let dragging = false, lastX = 0, lastY = 0, moved = false;
+  renderer.domElement.addEventListener('pointerdown', e => { dragging = e.button === 2 ? 'pan' : 'rot'; lastX = e.clientX; lastY = e.clientY; moved = false; });
+  addEventListener('pointerup', e => { if (dragging === 'rot' && !moved) onClickScene(e); dragging = null; });
+  addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    if (dragging === 'rot') { camYaw -= dx * 0.008; camPitch = Math.max(-1.3, Math.min(1.3, camPitch - dy * 0.008)); }
+    else { const s = camDist * 0.0018; camTarget.x -= Math.cos(camYaw) * dx * s; camTarget.z -= Math.sin(camYaw) * dx * s; camTarget.y += dy * s; }
+  });
+  renderer.domElement.addEventListener('wheel', e => { camDist = Math.max(2, Math.min(200, camDist * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+  renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+  function updateCam() {
+    const cp = Math.cos(camPitch);
+    camera.position.set(camTarget.x + Math.cos(camYaw) * cp * camDist, camTarget.y + Math.sin(camPitch) * camDist, camTarget.z + Math.sin(camYaw) * cp * camDist);
+    camera.lookAt(camTarget);
+  }
+  (function loop() { updateCam(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+
+  let parts = [], nextId = 1, selected = -1, currentFile = null;
+  function defaultPart(prim) {
+    const base = { id: nextId++, prim, color: '#c9c2b4', cat: 'base', x: 0, y: 1, z: 0 };
+    if (prim === 'box') return Object.assign(base, { w: 2, h: 2, d: 2, ry: 0 });
+    if (prim === 'cyl') return Object.assign(base, { rt: 0.5, rb: 0.5, h: 1.5, seg: 12 });
+    if (prim === 'sph') return Object.assign(base, { r: 0.6, sx: 1, sy: 1, sz: 1 });
+    if (prim === 'prism') return Object.assign(base, { len: 3, h: 1.6, depth: 3, ry: 0, color: '#7a3b2e' });
+  }
+  const modelGroup = new THREE.Group(); scene.add(modelGroup);
+  function rebuildScene() { modelGroup.clear(); for (const p of parts) { const m = meshFromPart(p); m.userData.partId = p.id; modelGroup.add(m); } }
+  function addPart(prim) { const p = defaultPart(prim); parts.push(p); rebuildScene(); renderPartList(); selectPart(parts.length - 1); }
+
+  function renderPartList() {} // (liste de pièces omise pour rester compact : sélection via clic 3D)
+
+  function sizeFieldsFor(p) {
+    const f = q('sizeFields');
+    if (p.prim === 'box') f.innerHTML = `
+      <div class="row"><div><label>Largeur</label><input type="number" data-f="sW" step="0.1" value="${p.w}"></div>
+      <div><label>Hauteur</label><input type="number" data-f="sH" step="0.1" value="${p.h}"></div>
+      <div><label>Profondeur</label><input type="number" data-f="sD" step="0.1" value="${p.d}"></div></div>
+      <label>Rotation Y (°)</label><input type="number" data-f="sRy" step="1" value="${Math.round((p.ry || 0) * 180 / Math.PI)}">`;
+    else if (p.prim === 'cyl') f.innerHTML = `
+      <div class="row"><div><label>Rayon haut</label><input type="number" data-f="sRt" step="0.05" value="${p.rt}"></div>
+      <div><label>Rayon bas</label><input type="number" data-f="sRb" step="0.05" value="${p.rb}"></div></div>
+      <div class="row"><div><label>Hauteur</label><input type="number" data-f="sH" step="0.1" value="${p.h}"></div>
+      <div><label>Segments</label><input type="number" data-f="sSeg" step="1" value="${p.seg}"></div></div>`;
+    else if (p.prim === 'sph') f.innerHTML = `
+      <label>Rayon</label><input type="number" data-f="sR" step="0.05" value="${p.r}">
+      <div class="row"><div><label>Éch. X</label><input type="number" data-f="sSx" step="0.1" value="${p.sx}"></div>
+      <div><label>Éch. Y</label><input type="number" data-f="sSy" step="0.1" value="${p.sy}"></div>
+      <div><label>Éch. Z</label><input type="number" data-f="sSz" step="0.1" value="${p.sz}"></div></div>`;
+    else if (p.prim === 'prism') f.innerHTML = `
+      <div class="row"><div><label>Longueur</label><input type="number" data-f="sLen" step="0.1" value="${p.len}"></div>
+      <div><label>Hauteur</label><input type="number" data-f="sH" step="0.1" value="${p.h}"></div>
+      <div><label>Profondeur</label><input type="number" data-f="sD" step="0.1" value="${p.depth}"></div></div>
+      <label>Rotation Y (°)</label><input type="number" data-f="sRy" step="1" value="${Math.round((p.ry || 0) * 180 / Math.PI)}">`;
+    for (const el of f.querySelectorAll('input')) el.oninput = () => applySizeFields(p, f);
+  }
+  function applySizeFields(p, f) {
+    const v = k => +f.querySelector(`[data-f="${k}"]`).value;
+    if (p.prim === 'box') { p.w = v('sW'); p.h = v('sH'); p.d = v('sD'); p.ry = v('sRy') * Math.PI / 180; }
+    else if (p.prim === 'cyl') { p.rt = v('sRt'); p.rb = v('sRb'); p.h = v('sH'); p.seg = Math.max(3, v('sSeg')); }
+    else if (p.prim === 'sph') { p.r = v('sR'); p.sx = v('sSx'); p.sy = v('sSy'); p.sz = v('sSz'); }
+    else if (p.prim === 'prism') { p.len = v('sLen'); p.h = v('sH'); p.depth = v('sD'); p.ry = v('sRy') * Math.PI / 180; }
+    rebuildScene();
+  }
+  function selectPart(i) {
+    selected = i;
+    q('fProps').style.display = i >= 0 ? 'block' : 'none';
+    q('fEmpty').style.display = i >= 0 ? 'none' : 'block';
+    if (i < 0) return;
+    const p = parts[i];
+    q('pType').value = p.prim; q('pX').value = p.x; q('pY').value = p.y; q('pZ').value = p.z;
+    q('pColor').value = p.color; q('pCat').value = p.cat;
+    sizeFieldsFor(p);
+  }
+  for (const [role, key] of [['pX', 'x'], ['pY', 'y'], ['pZ', 'z']]) q(role).oninput = () => { if (selected < 0) return; parts[selected][key] = +q(role).value; rebuildScene(); };
+  q('pColor').oninput = () => { if (selected < 0) return; parts[selected].color = q('pColor').value; rebuildScene(); };
+  q('pCat').oninput = () => { if (selected < 0) return; parts[selected].cat = q('pCat').value; rebuildScene(); };
+  q('dup').onclick = () => { if (selected < 0) return; const c = Object.assign({}, parts[selected], { id: nextId++, x: parts[selected].x + 0.6, z: parts[selected].z + 0.6 }); parts.push(c); rebuildScene(); selectPart(parts.length - 1); };
+  q('del').onclick = () => { if (selected < 0) return; parts.splice(selected, 1); rebuildScene(); selectPart(-1); };
+  for (const btn of q('toolbar').querySelectorAll('button')) btn.onclick = () => addPart(btn.dataset.add);
+
+  const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function onClickScene(e) {
+    const r = viewport.getBoundingClientRect();
+    ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObjects(modelGroup.children)[0];
+    if (hit) { const idx = parts.findIndex(p => p.id === hit.object.userData.partId); if (idx >= 0) selectPart(idx); }
+  }
+
+  if (hasTargetType) {
+    q('targetTypeField').style.display = 'block';
+    const sel = q('targetType');
+    sel.innerHTML = VT_KEYS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+  }
+
+  function setStatus(msg, ok) { const s = q('status'); s.textContent = msg; s.className = 'status ' + (ok ? 'ok' : 'err'); }
+
+  function newModel() {
+    parts = []; nextId = 1; currentFile = null; selectPart(-1);
+    q('modelName').value = defaultName;
+    for (const p of defaultParts()) { const np = Object.assign({ id: nextId++ }, p); parts.push(np); }
+    rebuildScene();
+    if (parts.length) { camTarget.set(0, 1.5, 0); camDist = 24; }
+    setStatus('Nouveau modèle.', true);
+  }
+  function loadModel(j, file) {
+    parts = (j.parts || []).map(p => Object.assign({ id: nextId++ }, p));
+    q('modelName').value = j.name || defaultName;
+    if (hasTargetType) q('targetType').value = j.targetType || VT_KEYS[0][0];
+    currentFile = file || null;
+    rebuildScene(); selectPart(-1);
+    setStatus('Modèle chargé (' + parts.length + ' pièces).', true);
+  }
+  q('new').onclick = newModel;
+  q('save').onclick = async () => {
+    const name = q('modelName').value.trim() || defaultName;
+    const fileName = (currentFile || (name.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '.json'));
+    const data = { name, kind, parts: parts.map(({ id, ...rest }) => rest) };
+    if (hasTargetType) data.targetType = q('targetType').value;
+    try {
+      if (Api.ok === false) throw new Error('API indisponible — lance ce fichier via serveur.py');
+      await Api.save(category, fileName, data);
+      currentFile = fileName;
+      setStatus('Enregistré sous ' + fileName, true);
+      await refreshList();
+    } catch (e) { setStatus('Échec : ' + e.message, false); }
+  };
+
+  const listEl = q('filelist');
+  async function refreshList() {
+    const all = await Api.list(); refreshApiState();
+    const items = all[category] || [];
+    listEl.innerHTML = '';
+    if (!items.length) { listEl.innerHTML = `<div class="empty">${Api.ok === false ? 'Liste indisponible sans serveur.py.' : 'Aucun fichier.'}</div>`; return; }
+    for (const it of items) {
+      const d = document.createElement('div');
+      d.className = 'fitem' + (currentFile === it.file ? ' sel' : '');
+      d.innerHTML = `<div class="nm">${it.name || it.file}</div><div class="meta">${it.parts != null ? it.parts + ' pièces' : '?'} · ${it.file}</div>`;
+      d.onclick = async () => { try { loadModel(await Api.get(category, it.file), it.file); refreshList(); } catch (e) { setStatus('Ouverture impossible : ' + e.message, false); } };
+      listEl.appendChild(d);
+    }
+  }
+  q('reload').onclick = refreshList;
+
+  newModel(); resize(); refreshList();
+}
+
+createAssetEditor({
+  pane: panes.batiments, category: 'batiments', kind: 'building',
+  desc: "Bâtiments du jeu (modeles/batiments/). Assemble des blocs/cylindres/sphères/toits, enregistre, puis utilise-les dans l'onglet Carte.",
+  defaultName: 'Nouveau bâtiment',
+  defaultParts: () => [{ prim: 'box', w: 6, h: 3, d: 5, y: 1.5, color: '#e9dcc3', cat: 'base' }]
+});
+createAssetEditor({
+  pane: panes.decors, category: 'decors', kind: 'decor',
+  desc: "Décors du jeu (modeles/decors/) : arbres, lampadaires, bancs, petits objets.",
+  defaultName: 'Nouveau décor',
+  defaultParts: () => [
+    { prim: 'cyl', rt: 0.18, rb: 0.22, h: 1.4, y: 0.7, color: '#6a4a30', cat: 'wood', seg: 12 },
+    { prim: 'sph', r: 1.1, y: 1.9, color: '#3d6e35', cat: 'base', sx: 1, sy: 0.9, sz: 1 }
+  ]
+});
+createAssetEditor({
+  pane: panes.vehicules, category: 'vehicules', kind: 'vehicle', hasTargetType: true,
+  desc: "Habillages de véhicules (modeles/vehicules/). Le modèle remplace la carrosserie du type visé (le jeu garde les roues, la physique et les statistiques de ce type) — chargé automatiquement au démarrage du jeu.",
+  defaultName: 'Nouveau véhicule',
+  defaultParts: () => [{ prim: 'box', w: 1.8, h: 0.6, d: 4.4, y: 0.6, color: '#c9282e', cat: 'base' }]
+});
+
+// =====================================================================
+// Onglet Carte (reprend editeur_carte_3d.html, bibliothèque chargée via l'API)
+// =====================================================================
+(function CarteTab() {
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  const viewport = $('c-viewport');
+  viewport.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x1c2a30);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.5, 4000);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x33422a, 1.0));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(200, 300, 150); scene.add(sun);
+
+  function resize() { const r = viewport.getBoundingClientRect(); if (!r.width || !r.height) return; renderer.setSize(r.width, r.height); camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); }
+  addEventListener('resize', resize); resizers.push(resize);
+
+  let camYaw = 0.8, camPitch = 0.9, camDist = 500, camTarget = new THREE.Vector3(0, 0, 0);
+  let dragging = null, lastX = 0, lastY = 0, moved = false;
+  renderer.domElement.addEventListener('pointerdown', e => { dragging = e.button === 2 ? 'pan' : 'rot'; lastX = e.clientX; lastY = e.clientY; moved = false; });
+  addEventListener('pointerup', e => { if (dragging === 'rot' && !moved) onClickGround(e); dragging = null; });
+  addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    if (dragging === 'rot') { camYaw -= dx * 0.008; camPitch = Math.max(0.15, Math.min(1.5, camPitch - dy * 0.008)); }
+    else { const s = camDist * 0.0015; camTarget.x -= Math.cos(camYaw) * dx * s; camTarget.z -= Math.sin(camYaw) * dx * s; }
+  });
+  renderer.domElement.addEventListener('wheel', e => { camDist = Math.max(20, Math.min(2200, camDist * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+  renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+  function updateCam() {
+    const cp = Math.cos(camPitch);
+    camera.position.set(camTarget.x + Math.cos(camYaw) * cp * camDist, camTarget.y + Math.sin(camPitch) * camDist, camTarget.z + Math.sin(camYaw) * cp * camDist);
+    camera.lookAt(camTarget);
+  }
+  (function loop() { updateCam(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+
+  const groundGroup = new THREE.Group(); scene.add(groundGroup);
+  (function buildGround() {
+    const base = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0x2b3a34 }));
+    base.rotation.x = -Math.PI / 2; groundGroup.add(base);
+    const grid = new THREE.GridHelper(2400, 60, 0x445a52, 0x2f423c); grid.position.y = 0.05; groundGroup.add(grid);
+    const axes = new THREE.GridHelper(40, 2, 0xf2c230, 0xf2c230); axes.position.y = 0.1; groundGroup.add(axes);
+  })();
+
+  let spawn = { x: 0, z: 0, facing: 0 };
+  const roads = [], doors = [], parking = [], pedSpawns = [];
+  let LIBRARY = [], selectedLib = -1;
+  let PLACED = [], selectedInst = -1;
+
+  const markersGroup = new THREE.Group(); scene.add(markersGroup);
+  const roadsGroup = new THREE.Group(); scene.add(roadsGroup);
+  const propsGroup = new THREE.Group(); scene.add(propsGroup);
+
+  function ring(x, z, color, r = 3) {
+    const g = new THREE.Mesh(new THREE.RingGeometry(r * 0.8, r, 24), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+    g.rotation.x = -Math.PI / 2; g.position.set(x, 0.3, z); return g;
+  }
+  function arrowMesh(x, z, angleRad, color) {
+    const g = new THREE.Mesh(new THREE.ConeGeometry(2.2, 6, 3), new THREE.MeshBasicMaterial({ color }));
+    g.rotation.x = -Math.PI / 2; g.position.set(x + Math.sin(angleRad) * 4, 0.35, z + Math.cos(angleRad) * 4); g.rotation.z = -angleRad; return g;
+  }
+  function redrawSpawn() {
+    markersGroup.children.filter(o => o.userData.kind === 'spawn').forEach(o => markersGroup.remove(o));
+    const r = ring(spawn.x, spawn.z, 0x37e0ff, 4); r.userData.kind = 'spawn'; markersGroup.add(r);
+    const a = arrowMesh(spawn.x, spawn.z, spawn.facing, 0x37e0ff); a.userData.kind = 'spawn'; markersGroup.add(a);
+  }
+  function redrawDoors() {
+    markersGroup.children.filter(o => o.userData.kind === 'door').forEach(o => markersGroup.remove(o));
+    doors.forEach(d => {
+      const r = ring(d.x, d.z, 0xf2c230, d.interior === 'garage' ? 5 : 3); r.userData.kind = 'door'; markersGroup.add(r);
+      const a = arrowMesh(d.x, d.z, Math.atan2(d.outX, d.outZ), 0xf2c230); a.userData.kind = 'door'; markersGroup.add(a);
+    });
+  }
+  function redrawParking() {
+    markersGroup.children.filter(o => o.userData.kind === 'parking').forEach(o => markersGroup.remove(o));
+    parking.forEach(p => {
+      const r = ring(p.x, p.z, 0x56a8e8, 2.2); r.userData.kind = 'parking'; markersGroup.add(r);
+      const a = arrowMesh(p.x, p.z, p.heading, 0x56a8e8); a.userData.kind = 'parking'; markersGroup.add(a);
+    });
+  }
+  function redrawPeds() {
+    markersGroup.children.filter(o => o.userData.kind === 'ped').forEach(o => markersGroup.remove(o));
+    pedSpawns.forEach(w => { const r = ring(w.x, w.z, 0x93e27c, w.r); r.userData.kind = 'ped'; markersGroup.add(r); });
+  }
+  function redrawRoads() {
+    roadsGroup.clear();
+    for (const r of roads) {
+      if (r.points.length < 2) continue;
+      const pts = r.points.map(p => new THREE.Vector3(p.x, 0.4, p.z));
+      roadsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: r.urban === false ? 0x888888 : 0xffe27a })));
+      for (const p of r.points) { const d = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a })); d.position.set(p.x, 0.4, p.z); roadsGroup.add(d); }
+    }
+  }
+
+  let mode = 'spawn';
+  const HINTS = {
+    spawn: 'Clique sur le sol pour placer le point de départ du joueur.',
+    routes: 'Clique pour ajouter un point à la route en cours (« Nouvelle route » pour en commencer une autre).',
+    doors: 'Configure le type à droite, puis clique sur le sol pour placer une porte.',
+    parking: 'Clique sur le sol pour poser une place de parking.',
+    peds: 'Clique sur le sol pour poser une zone de flânerie piétonne.',
+    props: 'Sélectionne un modèle dans la bibliothèque puis clique sur le sol pour le placer.'
+  };
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('#c-modebar button').forEach(b => b.classList.toggle('active', b.dataset.m === m));
+    for (const id of ['spawn', 'routes', 'doors', 'parking', 'peds', 'props']) $('c-panel-' + id).style.display = id === m ? 'block' : 'none';
+    $('c-panel-instance').style.display = (m === 'props' && selectedInst >= 0) ? 'block' : 'none';
+    $('c-hint').textContent = HINTS[m];
+  }
+  document.querySelectorAll('#c-modebar button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+
+  const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function groundPoint(e) {
+    const r = viewport.getBoundingClientRect();
+    ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObjects(groundGroup.children)[0];
+    return hit ? hit.point : null;
+  }
+  function onClickGround(e) {
+    if (mode === 'props') { onClickProps(e); return; }
+    const pt = groundPoint(e); if (!pt) return;
+    if (mode === 'spawn') { spawn.x = pt.x; spawn.z = pt.z; syncSpawnFields(); redrawSpawn(); }
+    else if (mode === 'routes') addRoadPoint(pt.x, pt.z);
+    else if (mode === 'doors') addDoor(pt.x, pt.z);
+    else if (mode === 'parking') addParking(pt.x, pt.z);
+    else if (mode === 'peds') addPed(pt.x, pt.z);
+    updateCounts();
+  }
+
+  function syncSpawnFields() { $('c-spX').value = Math.round(spawn.x); $('c-spZ').value = Math.round(spawn.z); $('c-spFacing').value = Math.round(spawn.facing * 180 / Math.PI); }
+  $('c-spX').oninput = () => { spawn.x = +$('c-spX').value; redrawSpawn(); };
+  $('c-spZ').oninput = () => { spawn.z = +$('c-spZ').value; redrawSpawn(); };
+  $('c-spFacing').oninput = () => { spawn.facing = +$('c-spFacing').value * Math.PI / 180; redrawSpawn(); };
+
+  let currentRoad = null;
+  function addRoadPoint(x, z) {
+    if (!currentRoad) { currentRoad = { points: [], width: +$('c-roadWidth').value, urban: $('c-roadUrban').checked }; roads.push(currentRoad); }
+    currentRoad.points.push({ x, z }); redrawRoads(); renderRoadList();
+  }
+  $('c-btnNewRoad').onclick = () => { currentRoad = null; };
+  $('c-btnUndoPoint').onclick = () => { if (currentRoad && currentRoad.points.length) currentRoad.points.pop(); redrawRoads(); renderRoadList(); };
+  function renderRoadList() {
+    const box = $('c-roadList'); box.innerHTML = '';
+    roads.forEach((r, i) => {
+      const d = document.createElement('div'); d.className = 'fitem';
+      d.innerHTML = `<div class="nm">Route ${i + 1}</div><div class="meta">${r.points.length} points · largeur ${r.width}</div>`;
+      const del = document.createElement('button'); del.className = 'btn-danger'; del.textContent = 'Suppr.'; del.style.marginTop = '4px';
+      del.onclick = ev => { ev.stopPropagation(); roads.splice(i, 1); if (currentRoad === r) currentRoad = null; redrawRoads(); renderRoadList(); updateCounts(); };
+      d.appendChild(del); box.appendChild(d);
+    });
+  }
+
+  function addDoor(x, z) {
+    const facing = +$('c-doorFacing').value * Math.PI / 180, interior = $('c-doorInterior').value;
+    doors.push({ x, z, outX: Math.sin(facing), outZ: Math.cos(facing), name: $('c-doorName').value || interior, interior, blip: $('c-doorBlip').value || interior[0].toUpperCase() });
+    redrawDoors(); renderDoorList();
+  }
+  $('c-doorInterior').onchange = () => {
+    const names = { flat: 'Planque', shop: 'Supérette', guns: 'Armurerie', hospital: 'Hôpital', garage: 'Garage', club: 'Club', clothes: 'Boutique', hair: 'Coiffeur' };
+    const blips = { flat: 'P', shop: 'S', guns: 'A', hospital: 'H', garage: 'G', club: 'N', clothes: 'V', hair: 'C' };
+    $('c-doorName').value = names[$('c-doorInterior').value]; $('c-doorBlip').value = blips[$('c-doorInterior').value];
+  };
+  function renderDoorList() {
+    const box = $('c-doorList'); box.innerHTML = '';
+    doors.forEach((d, i) => {
+      const el = document.createElement('div'); el.className = 'fitem';
+      el.innerHTML = `<div class="nm">${d.name}</div><div class="meta">${d.interior}</div>`;
+      const del = document.createElement('button'); del.className = 'btn-danger'; del.textContent = 'Suppr.'; del.style.marginTop = '4px';
+      del.onclick = ev => { ev.stopPropagation(); doors.splice(i, 1); redrawDoors(); renderDoorList(); updateCounts(); };
+      el.appendChild(del); box.appendChild(el);
+    });
+  }
+
+  function addParking(x, z) { parking.push({ x, z, heading: +$('c-parkHeading').value * Math.PI / 180 }); redrawParking(); renderParkList(); }
+  function renderParkList() {
+    const box = $('c-parkList'); box.innerHTML = '';
+    parking.forEach((p, i) => {
+      const el = document.createElement('div'); el.className = 'fitem'; el.innerHTML = `<div class="nm">Place ${i + 1}</div>`;
+      const del = document.createElement('button'); del.className = 'btn-danger'; del.textContent = 'Suppr.'; del.style.marginTop = '4px';
+      del.onclick = ev => { ev.stopPropagation(); parking.splice(i, 1); redrawParking(); renderParkList(); updateCounts(); };
+      el.appendChild(del); box.appendChild(el);
+    });
+  }
+
+  function addPed(x, z) { pedSpawns.push({ x, z, r: +$('c-pedR').value }); redrawPeds(); renderPedList(); }
+  function renderPedList() {
+    const box = $('c-pedList'); box.innerHTML = '';
+    pedSpawns.forEach((w, i) => {
+      const el = document.createElement('div'); el.className = 'fitem'; el.innerHTML = `<div class="nm">Zone ${i + 1}</div><div class="meta">rayon ${w.r}</div>`;
+      const del = document.createElement('button'); del.className = 'btn-danger'; del.textContent = 'Suppr.'; del.style.marginTop = '4px';
+      del.onclick = ev => { ev.stopPropagation(); pedSpawns.splice(i, 1); redrawPeds(); renderPedList(); updateCounts(); };
+      el.appendChild(del); box.appendChild(el);
+    });
+  }
+
+  async function refreshLibrary() {
+    const all = await Api.list(); refreshApiState();
+    LIBRARY = [];
+    for (const cat of ['batiments', 'decors']) for (const it of (all[cat] || [])) LIBRARY.push({ cat, file: it.file, name: it.name });
+    renderLibrary();
+  }
+  function renderLibrary() {
+    const box = $('c-libList'); box.innerHTML = '';
+    if (!LIBRARY.length) { box.innerHTML = `<div class="empty">${Api.ok === false ? 'Liste indisponible sans serveur.py.' : 'Aucun modèle. Crée-en dans les onglets Bâtiments/Décors.'}</div>`; return; }
+    LIBRARY.forEach((entry, i) => {
+      const d = document.createElement('div'); d.className = 'fitem' + (i === selectedLib ? ' sel' : '');
+      d.innerHTML = `<div class="nm">${entry.name || entry.file}</div><div class="meta">${entry.cat} · ${entry.file}</div>`;
+      d.onclick = () => { selectedLib = i; renderLibrary(); };
+      box.appendChild(d);
+    });
+  }
+
+  function rebuildInstance(inst) {
+    if (inst.group) propsGroup.remove(inst.group);
+    const g = new THREE.Group();
+    for (const p of inst.model.parts) g.add(meshFromPart(p));
+    g.position.set(inst.x, 0, inst.z); g.rotation.y = inst.ry; g.scale.setScalar(inst.scale);
+    g.userData.inst = inst; inst.group = g; propsGroup.add(g);
+  }
+  function addInstance(model, x, z) { const inst = { model, x, z, ry: 0, scale: 1 }; rebuildInstance(inst); PLACED.push(inst); return inst; }
+  function selectInstance(idx) {
+    selectedInst = idx;
+    $('c-panel-instance').style.display = idx >= 0 ? 'block' : 'none';
+    if (idx < 0) return;
+    const inst = PLACED[idx];
+    $('c-instName').textContent = inst.model.name || 'Sans nom';
+    $('c-iX').value = Math.round(inst.x); $('c-iZ').value = Math.round(inst.z);
+    $('c-iRy').value = Math.round(inst.ry * 180 / Math.PI); $('c-iScale').value = Math.round(inst.scale * 100);
+  }
+  for (const [id, key] of [['c-iX', 'x'], ['c-iZ', 'z']]) $(id).oninput = () => { if (selectedInst < 0) return; PLACED[selectedInst][key] = +$(id).value; rebuildInstance(PLACED[selectedInst]); };
+  $('c-iRy').oninput = () => { if (selectedInst < 0) return; PLACED[selectedInst].ry = +$('c-iRy').value * Math.PI / 180; rebuildInstance(PLACED[selectedInst]); };
+  $('c-iScale').oninput = () => { if (selectedInst < 0) return; PLACED[selectedInst].scale = +$('c-iScale').value / 100; rebuildInstance(PLACED[selectedInst]); };
+  $('c-btnDup').onclick = () => { if (selectedInst < 0) return; const src = PLACED[selectedInst]; const inst = addInstance(src.model, src.x + 6, src.z + 6); inst.ry = src.ry; inst.scale = src.scale; rebuildInstance(inst); selectInstance(PLACED.length - 1); updateCounts(); };
+  $('c-btnDel').onclick = () => { if (selectedInst < 0) return; propsGroup.remove(PLACED[selectedInst].group); PLACED.splice(selectedInst, 1); selectInstance(-1); updateCounts(); };
+  async function onClickProps(e) {
+    const r = viewport.getBoundingClientRect();
+    ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, camera);
+    const hitInst = raycaster.intersectObjects(propsGroup.children, true)[0];
+    if (hitInst) { let o = hitInst.object; while (o && !o.userData.inst) o = o.parent; if (o) { selectInstance(PLACED.indexOf(o.userData.inst)); return; } }
+    if (selectedLib < 0) { setStatus('Sélectionne un modèle dans la bibliothèque avant de placer.', false); return; }
+    const hitGround = raycaster.intersectObjects(groundGroup.children)[0]; if (!hitGround) return;
+    try {
+      const entry = LIBRARY[selectedLib];
+      const model = await Api.get(entry.cat, entry.file);
+      addInstance(model, hitGround.point.x, hitGround.point.z);
+      selectInstance(PLACED.length - 1); updateCounts();
+    } catch (err) { setStatus('Placement impossible : ' + err.message, false); }
+  }
+
+  function setStatus(msg, ok) { const s = $('c-status'); s.textContent = msg; s.className = 'status ' + (ok ? 'ok' : 'err'); }
+  function updateCounts() { $('c-counts').textContent = `${roads.length} route(s) · ${doors.length} porte(s) · ${parking.length} place(s) · ${pedSpawns.length} zone(s) piéton · ${PLACED.length} objet(s)`; }
+
+  $('c-btnSave').onclick = async () => {
+    const data = { spawn, roads: roads.map(r => ({ points: r.points, width: r.width, urban: r.urban })), doors, parking, pedSpawns, props: PLACED.map(inst => ({ x: inst.x, z: inst.z, ry: inst.ry, scale: inst.scale, model: inst.model })) };
+    try {
+      if (Api.ok === false) throw new Error('API indisponible — lance ce fichier via serveur.py');
+      await Api.call('/api/carte/enregistrer', data);
+      setStatus('carte.json enregistré (' + PLACED.length + ' objets).', true);
+    } catch (e) {
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'carte.json'; a.click();
+      setStatus('Enregistrement direct impossible (' + e.message + ') : téléchargé à la place.', false);
+    }
+  };
+  $('c-fileMap').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      if (j.spawn) spawn = j.spawn;
+      roads.length = 0; if (Array.isArray(j.roads)) roads.push(...j.roads.map(r => ({ points: r.points || [], width: r.width || 12, urban: r.urban !== false })));
+      doors.length = 0; if (Array.isArray(j.doors)) doors.push(...j.doors);
+      parking.length = 0; if (Array.isArray(j.parking)) parking.push(...j.parking);
+      pedSpawns.length = 0; if (Array.isArray(j.pedSpawns)) pedSpawns.push(...j.pedSpawns);
+      PLACED.forEach(inst => propsGroup.remove(inst.group)); PLACED = [];
+      if (Array.isArray(j.props)) for (const p of j.props) { const inst = addInstance(p.model, p.x, p.z); inst.ry = p.ry || 0; inst.scale = p.scale || 1; rebuildInstance(inst); }
+      currentRoad = null;
+      syncSpawnFields(); redrawSpawn(); redrawRoads(); redrawDoors(); redrawParking(); redrawPeds();
+      renderRoadList(); renderDoorList(); renderParkList(); renderPedList();
+      selectInstance(-1); updateCounts();
+      setStatus('Carte importée.', true);
+    } catch (err) { setStatus('Import impossible : ' + err.message, false); }
+    e.target.value = '';
+  };
+  $('c-btnReset').onclick = () => {
+    spawn = { x: 0, z: 0, facing: 0 };
+    roads.length = 0; doors.length = 0; parking.length = 0; pedSpawns.length = 0; currentRoad = null;
+    PLACED.forEach(inst => propsGroup.remove(inst.group)); PLACED = []; selectInstance(-1);
+    syncSpawnFields(); redrawSpawn(); redrawRoads(); redrawDoors(); redrawParking(); redrawPeds();
+    renderRoadList(); renderDoorList(); renderParkList(); renderPedList(); updateCounts();
+    setStatus('Nouvelle carte.', true);
+  };
+
+  // essaie de précharger la carte.json existante, pour repartir de l'état actuel du jeu
+  (async () => {
+    try {
+      const r = await fetch('carte.json', { cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j.spawn) spawn = j.spawn;
+        if (Array.isArray(j.roads)) roads.push(...j.roads.map(rr => ({ points: rr.points || [], width: rr.width || 12, urban: rr.urban !== false })));
+        if (Array.isArray(j.doors)) doors.push(...j.doors);
+        if (Array.isArray(j.parking)) parking.push(...j.parking);
+        if (Array.isArray(j.pedSpawns)) pedSpawns.push(...j.pedSpawns);
+        if (Array.isArray(j.props)) for (const p of j.props) { const inst = addInstance(p.model, p.x, p.z); inst.ry = p.ry || 0; inst.scale = p.scale || 1; rebuildInstance(inst); }
+        syncSpawnFields(); redrawSpawn(); redrawRoads(); redrawDoors(); redrawParking(); redrawPeds();
+        renderRoadList(); renderDoorList(); renderParkList(); renderPedList(); updateCounts();
+        setStatus('carte.json existante chargée.', true);
+      }
+    } catch (e) { /* pas de carte existante : on part d'une carte vide, c'est normal */ }
+  })();
+
+  syncSpawnFields(); redrawSpawn(); setMode('spawn'); updateCounts(); resize(); refreshLibrary();
+})();
+
+refreshApiState();
+</script>
+</body>
+</html>

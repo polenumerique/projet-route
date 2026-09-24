@@ -693,7 +693,7 @@ const CW = new CWorld(16); // extérieur
 let activeCW = CW;
 
 // =====================================================================
-// MONDE : entièrement défini par carte.json (voir editeur_carte_3d.html).
+// MONDE : entièrement défini par carte.json (voir editeur_jeu.html).
 // Plus aucune génération procédurale de ville : ce fichier ne fait que
 // charger la carte, construire les routes/props qu'elle décrit, et
 // exposer aux systèmes de jeu (PNJ, trafic, HUD) les structures dont
@@ -721,7 +721,7 @@ function zoneOf(x, z) {
   return 'zone';
 }
 
-// ---------- Carte externe (carte.json, obligatoire — voir editeur_carte_3d.html) ----------
+// ---------- Carte externe (carte.json, obligatoire — voir editeur_jeu.html) ----------
 let CUSTOM_PROPS = [];
 let MAP = null; // la carte chargée (voir loadMap / boot) : spawn, roads, doors, parking, pedSpawns, areas, props, pickups
 async function loadMap() {
@@ -732,6 +732,29 @@ async function loadMap() {
     if (Array.isArray(j.props)) CUSTOM_PROPS = j.props;
     return j;
   } catch (e) { return null; /* absent, invalide, ou page ouverte en local sans serveur (voir serveur.py) */ }
+}
+// charge les habillages de véhicules personnalisés (modeles/vehicules/*.json, créés avec editeur_jeu.html)
+// via l'API de serveur.py, et les applique via le même mécanisme que l'import .glb (CUSTOM.vehicles) :
+// makeVehicle() clone déjà ce groupe et le met à l'échelle du type visé, sans rien connaître de sa provenance.
+async function loadVehicleOverrides() {
+  try {
+    const r = await fetch('/api/modeles', { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    for (const entry of (j.vehicules || [])) {
+      try {
+        const model = await (await fetch(`modeles/vehicules/${entry.file}`, { cache: 'no-store' })).json();
+        if (model.targetType && VT[model.targetType] && Array.isArray(model.parts)) {
+          CUSTOM.vehicles[model.targetType] = groupFromParts(model.parts);
+        }
+      } catch (e) { /* fichier invalide : on l'ignore et on garde le véhicule procédural */ }
+    }
+  } catch (e) { /* pas de serveur.py (API absente) : les véhicules restent procéduraux */ }
+}
+function groupFromParts(parts) {
+  const g = new THREE.Group();
+  for (const p of parts) { const m = primFromJSON(p); if (m) g.add(m); }
+  return g;
 }
 // convertit une pièce JSON (format partagé avec les éditeurs 3D) en mesh via les primitives du jeu
 function primFromJSON(p) {
@@ -3523,7 +3546,7 @@ function frame() {
 // ---------- Démarrage ----------
 function showMapMissingError() {
   $('loadWrap').style.display = 'none';
-  $('tagline').innerHTML = "Aucune carte trouvée.<br><br>Ce jeu n'a plus de génération procédurale : construis ta carte avec <code>editeur_carte_3d.html</code> (bâtiments/décors via <code>editeur_batiments_3d.html</code> et <code>editeur_decors_3d.html</code>), exporte <code>carte.json</code> à côté du jeu, lance <code>serveur.py</code>, puis recharge cette page.";
+  $('tagline').innerHTML = "Aucune carte trouvée.<br><br>Ce jeu n'a plus de génération procédurale : ouvre <code>editeur_jeu.html</code> (carte, bâtiments, véhicules, décors), exporte <code>carte.json</code> à côté du jeu, lance <code>serveur.py</code>, puis recharge cette page.";
 }
 async function boot() {
   const bar = $('loadBar').firstChild, txt = $('loadText');
@@ -3531,6 +3554,7 @@ async function boot() {
   try { await Promise.race([document.fonts.load('italic 800 40px "Barlow Condensed"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
   requestAnimationFrame(frame);
   progress(0.02, 'Modèles personnalisés…'); await loadPersistedCustomModels();
+  await loadVehicleOverrides();
   const map = await loadMap();
   if (!map) { showMapMissingError(); return; }
   MAP = map;
