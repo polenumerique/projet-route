@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Éditeur de carte — Asphalte Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#15171a; --panel:#1d2024; --line:#2b2f34; --text:#f1efe8; --muted:#9a978d; --accent:#f2c230; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:'Barlow',sans-serif; }
+  #app{ display:flex; flex-wrap:wrap; gap:24px; padding:28px; max-width:1100px; margin:0 auto; }
+  h1{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-style:italic; font-size:30px; margin:0 0 2px; }
+  h1 span{ color:var(--accent); }
+  .sub{ font-size:13px; color:var(--muted); max-width:60ch; line-height:1.5; margin-bottom:16px; }
+  #left{ flex:0 0 auto; }
+  #right{ flex:1; min-width:280px; }
+  #gridWrap{ display:inline-block; background:#0f1113; padding:14px; border-radius:10px; border:1px solid var(--line); }
+  #grid{ display:grid; grid-template-columns:repeat(4, 92px); grid-template-rows:repeat(4, 92px); gap:4px; }
+  .cell{ position:relative; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:13px; text-align:center; cursor:pointer;
+    color:#141414; user-select:none; transition:transform .08s ease; line-height:1.2; padding:4px; }
+  .cell:hover{ transform:scale(1.04); outline:2px solid #fff; }
+  .cell.fixed{ cursor:not-allowed; color:#eee; }
+  .cell.fixed:hover{ transform:none; outline:2px dashed rgba(255,255,255,.4); }
+  .cell small{ display:block; font-family:'Barlow',sans-serif; font-weight:500; font-size:10px; opacity:.75; margin-top:2px; }
+  #axisTop, #axisLeft{ display:grid; gap:4px; font-size:11px; color:var(--muted); text-align:center; }
+  #axisTop{ grid-template-columns:repeat(4, 92px); margin:0 0 4px 28px; }
+  #axisLeft{ grid-template-rows:repeat(4, 92px); float:left; margin-top:0; padding-top:0; width:24px; }
+  #gridOuter{ display:flex; }
+  fieldset{ border:1px solid var(--line); border-radius:8px; margin:0 0 14px; padding:10px 12px 14px; }
+  legend{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:14px; color:var(--accent); padding:0 6px; }
+  .legendGrid{ display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:13px; }
+  .legendGrid span{ display:flex; align-items:center; gap:8px; }
+  .sw{ width:16px; height:16px; border-radius:4px; display:inline-block; flex:0 0 auto; }
+  button{ font:inherit; cursor:pointer; border:0; border-radius:6px; padding:9px 14px; font-weight:700; }
+  .btn-main{ background:var(--accent); color:#141414; }
+  .btn-ghost{ background:transparent; color:var(--text); box-shadow:inset 0 0 0 1.5px var(--line); }
+  .btn-main:hover, .btn-ghost:hover{ filter:brightness(1.08); }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+  #status{ font-size:12.5px; color:var(--muted); margin-top:10px; min-height:18px; }
+  #status.ok{ color:#9ee08a; }
+  code{ background:#0f1113; padding:1px 5px; border-radius:4px; }
+  .hint{ font-size:12.5px; color:var(--muted); line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <h1>Éditeur de <span>carte</span></h1>
+    <div class="sub">Clique une case pour changer le quartier qu'elle contiendra dans le jeu (maisons, hôtels, parc, zone industrielle…). Les cases grisées (Centre-Ville, Forêt) sont fixes : elles sont construites par du code dédié et ne dépendent pas de cette grille.</div>
+    <div id="gridOuter">
+      <div id="axisLeft"></div>
+      <div>
+        <div id="axisTop"></div>
+        <div id="gridWrap"><div id="grid"></div></div>
+      </div>
+    </div>
+    <p class="hint" style="max-width:420px">Axe horizontal = coordonnée X du monde, axe vertical = coordonnée Z. Chaque case fait 220×220 unités de jeu.</p>
+  </div>
+  <div id="right">
+    <fieldset>
+      <legend>Légende / quartiers disponibles</legend>
+      <div class="legendGrid" id="legend"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Fichier de carte</legend>
+      <p class="hint">Exporte <code>carte.json</code> et place-le à côté de <code>bulle_de_route.html</code> (sur un serveur local — <code>file://</code> direct ne permet pas au jeu de le charger). Au démarrage, le jeu essaie de lire ce fichier ; s'il est absent, il garde sa carte par défaut.</p>
+      <div class="row">
+        <button class="btn-main" id="btnExport">Exporter carte.json</button>
+        <label class="btn-ghost" style="cursor:pointer">Importer<input type="file" id="fileImport" accept=".json" style="display:none"></label>
+        <button class="btn-ghost" id="btnReset">Réinitialiser</button>
+      </div>
+      <div id="status"></div>
+    </fieldset>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const MAJ = [-440, -220, 0, 220, 440];
+
+const ZONES = {
+  downtown: { label: 'Centre-Ville', color: '#9aa1a8', fixed: true },
+  res:      { label: 'Résidentiel',  color: '#c9a24a' },
+  front:    { label: 'Front de mer', color: '#e8c9d8' },
+  park:     { label: 'Parc',         color: '#5aa563' },
+  ind:      { label: 'Zone indus.',  color: '#7d858d' },
+  forest:   { label: 'Forêt',        color: '#335c2c', fixed: true }
+};
+const EDITABLE = ['res', 'front', 'park', 'ind'];
+
+const DEFAULT_GRID = [
+  ['res', 'res', 'res', 'ind'],
+  ['res', 'downtown', 'downtown', 'park'],
+  ['res', 'downtown', 'downtown', 'park'],
+  ['forest', 'front', 'front', 'front']
+];
+let grid = DEFAULT_GRID.map(c => c.slice());
+
+function buildLegend() {
+  $('legend').innerHTML = Object.entries(ZONES).map(([k, z]) =>
+    `<span><i class="sw" style="background:${z.color}"></i>${z.label}${z.fixed ? ' <small style="color:var(--muted)">(fixe)</small>' : ''}</span>`
+  ).join('');
+}
+
+function buildAxes() {
+  $('axisTop').innerHTML = MAJ.slice(0, 4).map((v, i) => `<div>x: ${v} → ${MAJ[i + 1]}</div>`).join('');
+  $('axisLeft').innerHTML = MAJ.slice(0, 4).map((v, i) => `<div style="display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl">z: ${v} → ${MAJ[i + 1]}</div>`).join('');
+}
+
+function render() {
+  const g = $('grid'); g.innerHTML = '';
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+    const zn = grid[i][j], info = ZONES[zn];
+    const c = document.createElement('div');
+    c.className = 'cell' + (info.fixed ? ' fixed' : '');
+    c.style.background = info.color;
+    c.innerHTML = info.label + `<small>${zn}</small>`;
+    c.title = `Bloc (${i},${j}) — x:${MAJ[i]}→${MAJ[i + 1]}, z:${MAJ[j]}→${MAJ[j + 1]}`;
+    if (!info.fixed) c.onclick = () => { cycle(i, j); render(); };
+    g.appendChild(c);
+  }
+}
+function cycle(i, j) {
+  const idx = EDITABLE.indexOf(grid[i][j]);
+  grid[i][j] = EDITABLE[(idx + 1) % EDITABLE.length];
+}
+
+function setStatus(msg, ok) { const s = $('status'); s.textContent = msg; s.className = ok ? 'ok' : ''; }
+
+$('btnExport').onclick = () => {
+  const data = { zoneGrid: grid, note: 'Généré par editeur_carte.html — à placer à côté de bulle_de_route.html' };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'carte.json'; a.click();
+  setStatus('carte.json téléchargé. Place-le dans le même dossier que le jeu.', true);
+};
+$('btnReset').onclick = () => { grid = DEFAULT_GRID.map(c => c.slice()); render(); setStatus('Grille réinitialisée.', true); };
+$('fileImport').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (!Array.isArray(j.zoneGrid) || j.zoneGrid.length !== 4) throw new Error('format invalide');
+    grid = j.zoneGrid; render();
+    setStatus('carte.json importé.', true);
+  } catch (err) { setStatus('Import impossible : ' + err.message, false); }
+  e.target.value = '';
+};
+
+buildLegend(); buildAxes(); render();
+</script>
+</body>
+</html>

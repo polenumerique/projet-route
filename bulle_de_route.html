@@ -727,10 +727,24 @@ const ZONE_INFO = {
   park: { name: 'Parc des Bulles', sub: 'Espace vert' },
   airport: { name: 'Aéroport Saint-Bulle', sub: 'Pistes et hangars' }
 };
+// Grille éditable des quartiers (4x4 macro-blocs, ZONE_GRID[i][j] avec i = colonne X, j = colonne Z,
+// bornes données par MAJ ci-dessous). Peut être remplacée par un fichier externe carte.json
+// (voir loadMapOverride) produit par editeur_carte.html. Les cases 'downtown' (centre) et 'forest'
+// (coin nord-est de la grille) restent fixes car d'autres fonctions dédiées (downtownBlock, forest())
+// construisent déjà ce contenu indépendamment de cette grille.
+let ZONE_GRID = [
+  ['res', 'res', 'res', 'ind'],
+  ['res', 'downtown', 'downtown', 'park'],
+  ['res', 'downtown', 'downtown', 'park'],
+  ['forest', 'front', 'front', 'front']
+];
+function gridIndex(v) { for (let i = 0; i < 4; i++) if (v >= MAJ[i] && v < MAJ[i + 1]) return i; return -1; }
 function zoneOf(x, z) {
   if (z < -447 && x < 220) return 'airport';
   if (x >= 220 && z < -220) return 'forest';
   if (Math.abs(x) <= 227 && Math.abs(z) <= 227) return 'downtown';
+  const gi = gridIndex(x), gj = gridIndex(z);
+  if (gi >= 0 && gj >= 0) return ZONE_GRID[gi][gj];
   if (x < -227 && z <= 227) return 'res';
   if (x >= -227 && x < 220 && z < -227) return 'res';
   if (x < -227 && z > 227) return 'ind';
@@ -738,6 +752,17 @@ function zoneOf(x, z) {
   if (x >= 227 && x < 447 && z >= -220) return 'front';
   if (x > -227 && x < 227 && z > 227) return 'park';
   return 'res';
+}
+// charge une grille de quartiers exportée par l'éditeur de carte externe (carte.json), si présente
+async function loadMapOverride() {
+  try {
+    const r = await fetch('carte.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (Array.isArray(j.zoneGrid) && j.zoneGrid.length === 4 && j.zoneGrid.every(c => Array.isArray(c) && c.length === 4)) {
+      ZONE_GRID = j.zoneGrid;
+    }
+  } catch (e) { /* pas de carte.json ou page ouverte en local sans serveur : on garde la grille par défaut */ }
 }
 const URBAN = new Set(['downtown', 'res', 'front', 'park', 'ind']);
 
@@ -4131,6 +4156,7 @@ async function boot() {
   try { await Promise.race([document.fonts.load('italic 800 40px "Barlow Condensed"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
   requestAnimationFrame(frame);
   progress(0.02, 'Modèles personnalisés…'); await loadPersistedCustomModels();
+  await loadMapOverride();
   await buildWorld(progress);
   buildInteriors(); buildInteriorEnv();
   progress(0.9, 'Circulation et habitants…'); await tick();
