@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Éditeur de carte 3D — Asphalte Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#15171a; --panel:#1d2024; --line:#2b2f34; --text:#f1efe8; --muted:#9a978d; --accent:#f2c230; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--text); font-family:'Barlow',sans-serif; overflow:hidden; }
+  #app{ display:flex; height:100%; }
+  #viewport{ flex:1; position:relative; }
+  #viewport canvas{ display:block; width:100%; height:100%; }
+  #hint{ position:absolute; left:16px; bottom:12px; font-size:12px; color:#cfcabd; background:rgba(15,17,19,.55); padding:4px 9px; border-radius:5px; pointer-events:none; }
+  #modeBar{ position:absolute; left:16px; top:14px; display:flex; gap:6px; }
+  #modeBar button{ background:rgba(15,17,19,.7); color:var(--text); border:1px solid var(--line); }
+  #modeBar button.active{ background:var(--accent); color:#141414; border-color:var(--accent); }
+  #panel{ width:340px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:16px 16px 40px; }
+  h1{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-style:italic; font-size:24px; margin:0 0 2px; }
+  h1 span{ color:var(--accent); }
+  .sub{ font-size:12px; color:var(--muted); margin-bottom:14px; line-height:1.45; }
+  fieldset{ border:1px solid var(--line); border-radius:8px; margin:0 0 12px; padding:9px 11px 12px; }
+  legend{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:13px; color:var(--accent); padding:0 6px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  select, input[type=number], input[type=text]{ background:#0f1113; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:5px 7px; width:100%; font:inherit; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .row{ display:flex; gap:6px; }
+  .row > *{ flex:1; }
+  button{ font:inherit; cursor:pointer; border:0; border-radius:6px; padding:8px 12px; font-weight:700; }
+  .btn-main{ background:var(--accent); color:#141414; width:100%; margin-top:6px; }
+  .btn-ghost{ background:transparent; color:var(--text); box-shadow:inset 0 0 0 1.5px var(--line); width:100%; margin-top:6px; }
+  .btn-danger{ background:#7a2a2a; color:#fff; }
+  .btn-main:hover, .btn-ghost:hover, .btn-danger:hover{ filter:brightness(1.1); }
+  .libItem{ display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-radius:5px; font-size:12.5px; cursor:pointer; border:1px solid transparent; }
+  .libItem:hover{ background:#26292e; }
+  .libItem.sel{ border-color:var(--accent); background:#2a2410; }
+  .libItem small{ color:var(--muted); display:block; }
+  #legend{ display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; font-size:12px; }
+  .sw{ width:13px; height:13px; border-radius:3px; display:inline-block; margin-right:6px; vertical-align:-2px; }
+  #status{ font-size:12px; color:var(--muted); margin-top:8px; min-height:16px; }
+  #status.ok{ color:#9ee08a; }
+  .valline{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="viewport">
+    <div id="modeBar">
+      <button id="modeZones" class="active">Quartiers</button>
+      <button id="modeProps">Objets</button>
+    </div>
+    <div id="hint">Glisser : orbiter · molette : zoom · clic droit : panoramique</div>
+  </div>
+  <div id="panel">
+    <h1>Éditeur de <span>carte 3D</span></h1>
+    <div class="sub">Peins les quartiers, importe des bâtiments/décors créés avec <code>editeur_batiments_3d.html</code> / <code>editeur_decors_3d.html</code>, place-les sur l'île, puis exporte <code>carte.json</code> à côté du jeu.</div>
+
+    <fieldset id="fZones">
+      <legend>Mode Quartiers</legend>
+      <p class="sub" style="margin:0 0 8px">Clique une case au sol dans la zone en surbrillance pour changer son quartier. Les cases grises (Centre-Ville, Forêt) sont fixes.</p>
+      <div id="legend"></div>
+    </fieldset>
+
+    <fieldset id="fLibrary">
+      <legend>Bibliothèque de modèles</legend>
+      <label>Importer un ou plusieurs .json (bâtiment / décor)</label>
+      <input type="file" id="fileLib" accept=".json" multiple>
+      <div id="libList" style="margin-top:8px;max-height:160px;overflow-y:auto"></div>
+      <p class="sub" style="margin:8px 0 0">Sélectionne un modèle puis clique au sol pour le placer.</p>
+    </fieldset>
+
+    <fieldset id="fInstance" style="display:none">
+      <legend>Objet sélectionné</legend>
+      <div id="instName" style="font-weight:700;font-size:13px;margin-bottom:6px"></div>
+      <div class="row">
+        <div><label>X</label><input type="number" id="iX" step="1"></div>
+        <div><label>Z</label><input type="number" id="iZ" step="1"></div>
+      </div>
+      <label>Rotation</label>
+      <input type="range" id="iRy" min="0" max="360" value="0">
+      <label>Échelle</label>
+      <input type="range" id="iScale" min="20" max="300" value="100">
+      <div class="row">
+        <button class="btn-ghost" id="btnDup">Dupliquer</button>
+        <button class="btn-danger" id="btnDel">Supprimer</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Carte</legend>
+      <div id="propCount" class="sub" style="margin:0 0 6px">0 objet placé</div>
+      <button class="btn-main" id="btnExport">Exporter carte.json</button>
+      <label style="margin-top:8px">Importer une carte existante</label>
+      <input type="file" id="fileMap" accept=".json">
+      <button class="btn-ghost" id="btnReset">Nouvelle carte</button>
+      <div id="status"></div>
+    </fieldset>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const MAJ = [-440, -220, 0, 220, 440];
+const ISLAND = 600;
+
+const ZONES = {
+  downtown: { label: 'Centre-Ville', color: 0x9aa1a8, fixed: true },
+  res:      { label: 'Résidentiel',  color: 0xc9a24a },
+  front:    { label: 'Front de mer', color: 0xe8c9d8 },
+  park:     { label: 'Parc',         color: 0x5aa563 },
+  ind:      { label: 'Zone indus.',  color: 0x7d858d },
+  forest:   { label: 'Forêt',        color: 0x335c2c, fixed: true }
+};
+const EDITABLE = ['res', 'front', 'park', 'ind'];
+const DEFAULT_GRID = [
+  ['res', 'res', 'res', 'ind'],
+  ['res', 'downtown', 'downtown', 'park'],
+  ['res', 'downtown', 'downtown', 'park'],
+  ['forest', 'front', 'front', 'front']
+];
+let zoneGrid = DEFAULT_GRID.map(c => c.slice());
+
+// ---------- Rendu ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+$('viewport').appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1c2a30);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.5, 4000);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x33422a, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(200, 300, 150); scene.add(sun);
+
+function resize() {
+  const r = $('viewport').getBoundingClientRect();
+  renderer.setSize(r.width, r.height);
+  camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+let camYaw = 0.8, camPitch = 0.9, camDist = 900, camTarget = new THREE.Vector3(0, 0, 0);
+let dragging = null, lastX = 0, lastY = 0, moved = false;
+renderer.domElement.addEventListener('pointerdown', e => { dragging = e.button === 2 ? 'pan' : 'rot'; lastX = e.clientX; lastY = e.clientY; moved = false; });
+addEventListener('pointerup', e => { if (dragging === 'rot' && !moved) onClickGround(e); dragging = null; });
+addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+  if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+  if (dragging === 'rot') { camYaw -= dx * 0.008; camPitch = Math.max(0.15, Math.min(1.5, camPitch - dy * 0.008)); }
+  else { const s = camDist * 0.0015; camTarget.x -= Math.cos(camYaw) * dx * s; camTarget.z -= Math.sin(camYaw) * dx * s; }
+});
+renderer.domElement.addEventListener('wheel', e => { camDist = Math.max(30, Math.min(2200, camDist * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+function updateCam() {
+  const cp = Math.cos(camPitch);
+  camera.position.set(camTarget.x + Math.cos(camYaw) * cp * camDist, camTarget.y + Math.sin(camPitch) * camDist, camTarget.z + Math.sin(camYaw) * cp * camDist);
+  camera.lookAt(camTarget);
+}
+
+// ---------- Sol / grille de quartiers ----------
+const groundGroup = new THREE.Group(); scene.add(groundGroup);
+function buildGround() {
+  groundGroup.clear();
+  const base = new THREE.Mesh(new THREE.PlaneGeometry(ISLAND * 2, ISLAND * 2), new THREE.MeshStandardMaterial({ color: 0x2b3a34 }));
+  base.rotation.x = -Math.PI / 2; groundGroup.add(base);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    const x0 = MAJ[i], x1 = MAJ[i + 1], z0 = MAJ[j], z1 = MAJ[j + 1];
+    const zn = zoneGrid[i][j], info = ZONES[zn];
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0 - 2, z1 - z0 - 2), new THREE.MeshBasicMaterial({ color: info.color }));
+    m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, 0.3, (z0 + z1) / 2);
+    m.userData.cell = { i, j }; groundGroup.add(m);
+  }
+  const grid = new THREE.GridHelper(ISLAND * 2, 40, 0x1a2226, 0x1a2226); grid.position.y = 0.35; groundGroup.add(grid);
+}
+function buildLegend() {
+  $('legend').innerHTML = Object.entries(ZONES).map(([k, z]) => `<span><i class="sw" style="background:#${z.color.toString(16).padStart(6, '0')}"></i>${z.label}${z.fixed ? ' (fixe)' : ''}</span>`).join('');
+}
+function cycleZone(i, j) {
+  if (ZONES[zoneGrid[i][j]].fixed) return;
+  const idx = EDITABLE.indexOf(zoneGrid[i][j]);
+  zoneGrid[i][j] = EDITABLE[(idx + 1) % EDITABLE.length];
+  buildGround();
+}
+
+// ---------- Primitives (mêmes conventions que le jeu) ----------
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const PRISM = (() => {
+  const a = -0.5, b = 0.5, v = [[a, 0, -0.5], [a, 0, 0.5], [a, 1, 0], [b, 0, -0.5], [b, 0, 0.5], [b, 1, 0]];
+  const tris = [[0, 1, 2], [3, 5, 4], [0, 5, 3], [0, 2, 5], [1, 5, 2], [1, 4, 5], [0, 4, 1], [0, 3, 4]];
+  const pos = []; for (const t of tris) for (const i of t) pos.push(...v[i]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+})();
+const MATS = new Map();
+function matFor(color, cat) {
+  const key = color + '|' + cat; let m = MATS.get(key); if (m) return m;
+  const lit = cat === 'glassLit';
+  m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: cat === 'glass' || lit ? 0.12 : 0.85, metalness: cat === 'glass' || lit ? 0.5 : 0 });
+  if (lit) { m.emissive = new THREE.Color(0xffc06a); m.emissiveIntensity = 0.5; }
+  MATS.set(key, m); return m;
+}
+function meshFromPart(p) {
+  const color = typeof p.color === 'string' ? parseInt(p.color.replace('#', ''), 16) : p.color;
+  const cat = p.cat || 'base';
+  let m;
+  if (p.prim === 'cyl') { m = new THREE.Mesh(new THREE.CylinderGeometry(p.rt, p.rb, 1, p.seg || 12), matFor(color, cat)); m.scale.set(1, p.h, 1); }
+  else if (p.prim === 'sph') { m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), matFor(color, cat)); m.scale.set(p.r * (p.sx || 1), p.r * (p.sy || 1), p.r * (p.sz || 1)); }
+  else if (p.prim === 'prism') { m = new THREE.Mesh(PRISM, matFor(color, cat)); m.scale.set(p.len, p.h, p.depth); if (p.ry) m.rotation.y = p.ry; }
+  else { m = new THREE.Mesh(UNIT_BOX, matFor(color, cat)); m.scale.set(p.w, p.h, p.d); if (p.ry) m.rotation.y = p.ry; }
+  m.position.set(p.x, p.y, p.z); m.castShadow = true;
+  return m;
+}
+
+// ---------- Bibliothèque de modèles importés ----------
+let LIBRARY = [], selectedLib = -1;
+function renderLibrary() {
+  $('libList').innerHTML = '';
+  LIBRARY.forEach((entry, i) => {
+    const d = document.createElement('div');
+    d.className = 'libItem' + (i === selectedLib ? ' sel' : '');
+    d.innerHTML = `<span>${entry.model.name || 'Sans nom'}<small>${entry.model.kind || '?'} · ${entry.model.parts.length} pièces</small></span>`;
+    d.onclick = () => { selectedLib = i; renderLibrary(); setMode('props'); };
+    $('libList').appendChild(d);
+  });
+}
+$('fileLib').onchange = async e => {
+  for (const f of e.target.files) {
+    try { const model = JSON.parse(await f.text()); if (Array.isArray(model.parts)) LIBRARY.push({ model }); }
+    catch (err) { setStatus('Fichier ignoré (' + f.name + ') : ' + err.message, false); }
+  }
+  renderLibrary(); e.target.value = '';
+};
+
+// ---------- Objets placés ----------
+let PLACED = [], selectedInst = -1;
+const propsGroup = new THREE.Group(); scene.add(propsGroup);
+function rebuildInstance(inst) {
+  if (inst.group) propsGroup.remove(inst.group);
+  const g = new THREE.Group();
+  for (const p of inst.model.parts) g.add(meshFromPart(p));
+  g.position.set(inst.x, 0, inst.z); g.rotation.y = inst.ry; g.scale.setScalar(inst.scale);
+  g.userData.inst = inst; inst.group = g; propsGroup.add(g);
+}
+function addInstance(model, x, z) {
+  const inst = { model, x, z, ry: 0, scale: 1 };
+  rebuildInstance(inst); PLACED.push(inst); return inst;
+}
+function selectInstance(idx) {
+  selectedInst = idx;
+  $('fInstance').style.display = idx >= 0 ? 'block' : 'none';
+  if (idx < 0) return;
+  const inst = PLACED[idx];
+  $('instName').textContent = inst.model.name || 'Sans nom';
+  $('iX').value = Math.round(inst.x); $('iZ').value = Math.round(inst.z);
+  $('iRy').value = Math.round(inst.ry * 180 / Math.PI); $('iScale').value = Math.round(inst.scale * 100);
+}
+for (const [id, key] of [['iX', 'x'], ['iZ', 'z']]) $(id).oninput = () => { if (selectedInst < 0) return; const inst = PLACED[selectedInst]; inst[key] = +$(id).value; rebuildInstance(inst); updatePropCount(); };
+$('iRy').oninput = () => { if (selectedInst < 0) return; const inst = PLACED[selectedInst]; inst.ry = +$('iRy').value * Math.PI / 180; rebuildInstance(inst); };
+$('iScale').oninput = () => { if (selectedInst < 0) return; const inst = PLACED[selectedInst]; inst.scale = +$('iScale').value / 100; rebuildInstance(inst); };
+$('btnDup').onclick = () => { if (selectedInst < 0) return; const src = PLACED[selectedInst]; const inst = addInstance(src.model, src.x + 6, src.z + 6); inst.ry = src.ry; inst.scale = src.scale; rebuildInstance(inst); selectInstance(PLACED.length - 1); updatePropCount(); };
+$('btnDel').onclick = () => { if (selectedInst < 0) return; propsGroup.remove(PLACED[selectedInst].group); PLACED.splice(selectedInst, 1); selectInstance(-1); updatePropCount(); };
+function updatePropCount() { $('propCount').textContent = PLACED.length + ' objet' + (PLACED.length === 1 ? '' : 's') + ' placé' + (PLACED.length === 1 ? '' : 's'); }
+
+// ---------- Modes & interaction souris ----------
+let mode = 'zones';
+function setMode(m) { mode = m; $('modeZones').classList.toggle('active', m === 'zones'); $('modeProps').classList.toggle('active', m === 'props'); $('fZones').style.display = m === 'zones' ? 'block' : 'none'; }
+$('modeZones').onclick = () => setMode('zones');
+$('modeProps').onclick = () => setMode('props');
+
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function onClickGround(e) {
+  const r = $('viewport').getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  if (mode === 'zones') {
+    const hit = raycaster.intersectObjects(groundGroup.children).find(h => h.object.userData.cell);
+    if (hit) cycleZone(hit.object.userData.cell.i, hit.object.userData.cell.j);
+    return;
+  }
+  // mode objets : clic sur un objet existant → sélection ; sinon placement du modèle courant
+  const hitInst = raycaster.intersectObjects(propsGroup.children, true)[0];
+  if (hitInst) {
+    let o = hitInst.object; while (o && !o.userData.inst) o = o.parent;
+    if (o) { selectInstance(PLACED.indexOf(o.userData.inst)); return; }
+  }
+  if (selectedLib < 0) { setStatus('Sélectionne un modèle dans la bibliothèque avant de placer.', false); return; }
+  const hitGround = raycaster.intersectObjects(groundGroup.children)[0];
+  if (!hitGround) return;
+  addInstance(LIBRARY[selectedLib].model, hitGround.point.x, hitGround.point.z);
+  selectInstance(PLACED.length - 1); updatePropCount();
+}
+
+// ---------- Export / import de carte ----------
+function setStatus(msg, ok) { const s = $('status'); s.textContent = msg; s.className = ok ? 'ok' : ''; }
+$('btnExport').onclick = () => {
+  const data = { zoneGrid, props: PLACED.map(inst => ({ x: inst.x, z: inst.z, ry: inst.ry, scale: inst.scale, model: inst.model })) };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'carte.json'; a.click();
+  setStatus('carte.json téléchargé (' + PLACED.length + ' objets). Place-le à côté du jeu.', true);
+};
+$('fileMap').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (Array.isArray(j.zoneGrid)) zoneGrid = j.zoneGrid;
+    PLACED.forEach(inst => propsGroup.remove(inst.group)); PLACED = [];
+    if (Array.isArray(j.props)) for (const p of j.props) { const inst = addInstance(p.model, p.x, p.z); inst.ry = p.ry || 0; inst.scale = p.scale || 1; rebuildInstance(inst); }
+    buildGround(); selectInstance(-1); updatePropCount();
+    setStatus('Carte importée (' + PLACED.length + ' objets).', true);
+  } catch (err) { setStatus('Import impossible : ' + err.message, false); }
+  e.target.value = '';
+};
+$('btnReset').onclick = () => {
+  zoneGrid = DEFAULT_GRID.map(c => c.slice());
+  PLACED.forEach(inst => propsGroup.remove(inst.group)); PLACED = []; selectInstance(-1);
+  buildGround(); updatePropCount(); setStatus('Nouvelle carte.', true);
+};
+
+buildLegend(); buildGround(); updatePropCount(); resize();
+(function loop() { updateCam(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
