@@ -1,0 +1,30 @@
+{
+ "name": "Sapin",
+ "kind": "decor",
+ "parts": [
+  {
+   "prim": "cyl",
+   "rt": 0.14,
+   "rb": 0.2,
+   "h": 1.2,
+   "seg": 12,
+   "color": "#5a4030",
+   "x": 0,
+   "y": 0.6,
+   "z": 0,
+   "cat": "wood"
+  },
+  {
+   "prim": "prism",
+   "len": 2.2,
+   "h": 2.6,
+   "depth": 2.2,
+   "color": "#2f5232",
+   "x": 0,
+   "y": 1.1,
+   "z": 0,
+   "ry": 0,
+   "cat": "base"
+  }
+ ]
+}

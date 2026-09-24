@@ -266,12 +266,10 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
     <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;gap:8px;align-items:center">
         <span style="flex:1;font-size:14px">Personnage</span>
-        <button class="btn" id="btnExportPlayer" style="font-size:12px;padding:5px 12px">Exporter</button>
         <label class="btn" style="font-size:12px;padding:5px 12px;cursor:pointer;margin:0">Importer<input type="file" id="fileImportPlayer" accept=".glb,.gltf" style="display:none"></label>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <select id="vehTypeSelect" style="flex:1;font-size:13px;padding:4px;border-radius:4px"></select>
-        <button class="btn" id="btnExportVehicle" style="font-size:12px;padding:5px 12px">Exporter</button>
         <label class="btn" style="font-size:12px;padding:5px 12px;cursor:pointer;margin:0">Importer<input type="file" id="fileImportVehicle" accept=".glb,.gltf" style="display:none"></label>
       </div>
       <button class="btn" id="btnResetModels" style="font-size:12px;padding:5px 12px;align-self:flex-start">Réinitialiser les modèles importés</button>
@@ -287,9 +285,7 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
 <div id="fade"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script><script>
 'use strict';
 /* =====================================================================
    BULLE DE ROUTE — pseudo-GTA en monde ouvert, 100 % procédural
@@ -2189,20 +2185,6 @@ function loadPersistedCustomModels() {
     Promise.all(tasks).then(resolve);
   });
 }
-function downloadBlob(data, filename, mime) {
-  const blob = new Blob([data], { type: mime }), url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
-function exportGLB(object3D, filename) {
-  // GLTFExporter.parse(input, onDone, options) : pas de callback d'erreur séparé sur cette version
-  try {
-    new THREE.GLTFExporter().parse(object3D, result => {
-      const buf = result instanceof ArrayBuffer ? result : new TextEncoder().encode(JSON.stringify(result)).buffer;
-      downloadBlob(buf, filename, 'model/gltf-binary');
-    }, { binary: true });
-  } catch (e) { console.error(e); toast('Échec de l\'export'); }
-}
 function importGLB(file, onScene) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -4091,12 +4073,6 @@ $('btnResume').onclick = resumeGame;
   const sel = $('vehTypeSelect');
   sel.innerHTML = Object.keys(VT).map(t => `<option value="${t}">${VT[t].name}${CUSTOM.vehicles[t] ? ' ★' : ''}</option>`).join('');
   const refreshSel = () => { for (const o of sel.options) o.textContent = VT[o.value].name + (CUSTOM.vehicles[o.value] ? ' ★' : ''); };
-  $('btnExportPlayer').onclick = () => exportGLB(player.h.root, 'personnage.glb');
-  $('btnExportVehicle').onclick = () => {
-    const type = sel.value;
-    if (player.mode === 'drive' && player.vehicle.type === type) { exportGLB(player.vehicle.g, `${type}.glb`); return; }
-    const v = makeVehicle(type, 0, 0, 0); exportGLB(v.g, `${type}.glb`); removeVehicle(v);
-  };
   $('fileImportPlayer').onchange = e => {
     const f = e.target.files[0]; if (!f) return;
     importGLB(f, scene => { CUSTOM.player = scene; buildPlayerModel(); saveCustomModels(); toast('Modèle du personnage importé'); AU.buy(); });

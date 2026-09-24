@@ -1,0 +1,42 @@
+{
+ "name": "Lampadaire",
+ "kind": "decor",
+ "parts": [
+  {
+   "prim": "cyl",
+   "rt": 0.06,
+   "rb": 0.09,
+   "h": 4.2,
+   "seg": 12,
+   "color": "#2a2c2f",
+   "x": 0,
+   "y": 2.1,
+   "z": 0,
+   "cat": "metal"
+  },
+  {
+   "prim": "box",
+   "w": 0.5,
+   "h": 0.06,
+   "d": 0.2,
+   "color": "#2a2c2f",
+   "x": 0,
+   "y": 4.2,
+   "z": 0.15,
+   "cat": "metal",
+   "ry": 0.2
+  },
+  {
+   "prim": "sph",
+   "r": 0.16,
+   "sx": 1,
+   "sy": 1,
+   "sz": 1,
+   "color": "#fff0c0",
+   "x": 0,
+   "y": 4.05,
+   "z": 0.32,
+   "cat": "glow"
+  }
+ ]
+}
