@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bulle de Route — L'île</title>
+<title>Asphalte Libre — L'île</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -201,7 +201,7 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
 
 <div id="title">
   <div id="titleCol">
-    <div id="logo">Bulle<br>de Route</div>
+    <div id="logo">Asphalte<br>Libre</div>
     <div class="lane"></div>
     <p id="tagline">Une île, huit quartiers et des portes qui s'ouvrent. Volez une voiture, dépensez votre argent, dormez à la planque. Pas de police, pour l'instant.</p>
     <div id="loadWrap"><div id="loadText">Construction de l'île…</div><div id="loadBar"><i></i></div></div>
@@ -239,7 +239,6 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
     <h2>Pause</h2>
     <div class="stats">
       <span>Argent</span><b id="stMoney">$0</b>
-      <span>Bulles dorées</span><b id="stPk">0 / 20</b>
       <span>Jour</span><b id="stDay">1</b>
       <span>Santé</span><b id="stHp">100</b>
     </div>
@@ -267,12 +266,10 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
     <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;gap:8px;align-items:center">
         <span style="flex:1;font-size:14px">Personnage</span>
-        <button class="btn" id="btnExportPlayer" style="font-size:12px;padding:5px 12px">Exporter</button>
         <label class="btn" style="font-size:12px;padding:5px 12px;cursor:pointer;margin:0">Importer<input type="file" id="fileImportPlayer" accept=".glb,.gltf" style="display:none"></label>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <select id="vehTypeSelect" style="flex:1;font-size:13px;padding:4px;border-radius:4px"></select>
-        <button class="btn" id="btnExportVehicle" style="font-size:12px;padding:5px 12px">Exporter</button>
         <label class="btn" style="font-size:12px;padding:5px 12px;cursor:pointer;margin:0">Importer<input type="file" id="fileImportVehicle" accept=".glb,.gltf" style="display:none"></label>
       </div>
       <button class="btn" id="btnResetModels" style="font-size:12px;padding:5px 12px;align-self:flex-start">Réinitialiser les modèles importés</button>
@@ -281,16 +278,14 @@ button:focus-visible{ outline:2px solid var(--signal); outline-offset:3px; }
     <div class="setting"><label for="sensRange">Sensibilité</label><input id="sensRange" type="range" min="20" max="200" value="100"></div>
     <div class="setting"><label for="qualRange">Qualité</label><input id="qualRange" type="range" min="0" max="2" value="2" step="1"></div>
     <div class="pauseBtns"><button class="btn" id="btnResume">Reprendre</button></div>
-    <p class="hint">La partie se sauvegarde quand vous dormez à la planque <span class="k">P</span> et à chaque bulle dorée trouvée.</p>
+    <p class="hint">La partie se sauvegarde quand vous dormez à la planque <span class="k">P</span>.</p>
   </div>
 </div>
 
 <div id="fade"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script><script>
 'use strict';
 /* =====================================================================
    BULLE DE ROUTE — pseudo-GTA en monde ouvert, 100 % procédural
@@ -698,85 +693,94 @@ const CW = new CWorld(16); // extérieur
 let activeCW = CW;
 
 // =====================================================================
-// MONDE : île, routes, quartiers, bâtiments
+// MONDE : entièrement défini par carte.json (voir editeur_carte_3d.html).
+// Plus aucune génération procédurale de ville : ce fichier ne fait que
+// charger la carte, construire les routes/props qu'elle décrit, et
+// exposer aux systèmes de jeu (PNJ, trafic, HUD) les structures dont
+// ils ont besoin (graphe de routes, zones nommées).
 // =====================================================================
-const ISLAND = 600, LIMIT = 594, ROAD_HALF = 7;
-const PIER = { minX: 596, maxX: 690, minZ: 112, maxZ: 124, h: 0.75 };
 
-// ---------- Carte des hauteurs (trottoirs, routes, ponton) ----------
+// ---------- Carte des hauteurs (trottoirs, routes) ----------
 const HM_N = 1200, HM = new Float32Array(HM_N * HM_N);
 function hmRect(x0, x1, z0, z1, h) {
   const i0 = Math.max(0, Math.floor(x0 + 600)), i1 = Math.min(HM_N - 1, Math.ceil(x1 + 600) - 1);
   const j0 = Math.max(0, Math.floor(z0 + 600)), j1 = Math.min(HM_N - 1, Math.ceil(z1 + 600) - 1);
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const k = j * HM_N + i; if (HM[k] < h) HM[k] = h; }
 }
-const inPier = (x, z) => x > PIER.minX && x < PIER.maxX && z > PIER.minZ && z < PIER.maxZ;
 function groundH(x, z) {
   if (x > -600 && x < 600 && z > -600 && z < 600) return HM[Math.floor(z + 600) * HM_N + Math.floor(x + 600)];
-  return inPier(x, z) ? PIER.h : 0;
+  return 0;
 }
-const walkable = (x, z) => (Math.abs(x) < LIMIT && Math.abs(z) < LIMIT) || inPier(x, z);
+const walkable = (x, z) => Math.abs(x) < 594 && Math.abs(z) < 594;
 
-// ---------- Quartiers ----------
-const ZONE_INFO = {
-  downtown: { name: 'Centre-Ville', sub: 'Quartier des affaires' },
-  res: { name: 'Les Tilleuls', sub: 'Quartier résidentiel' },
-  forest: { name: 'Forêt des Pins', sub: 'Réserve naturelle' },
-  ind: { name: 'Les Docks', sub: 'Zone industrielle' },
-  beach: { name: 'Côte Dorée', sub: 'Plage' },
-  front: { name: 'Front de Mer', sub: 'Hôtels et vie nocturne' },
-  park: { name: 'Parc des Bulles', sub: 'Espace vert' },
-  airport: { name: 'Aéroport Saint-Bulle', sub: 'Pistes et hangars' }
-};
+// ---------- Zones nommées (optionnelles, définies dans carte.json → map.areas) ----------
+const ZONE_INFO = { zone: { name: 'Zone libre', sub: '' } };
+const ZONES_LIST = []; // { id, name, sub, x0, x1, z0, z1 } — rempli par buildWorldFromMap
 function zoneOf(x, z) {
-  if (z < -447 && x < 220) return 'airport';
-  if (x >= 220 && z < -220) return 'forest';
-  if (Math.abs(x) <= 227 && Math.abs(z) <= 227) return 'downtown';
-  if (x < -227 && z <= 227) return 'res';
-  if (x >= -227 && x < 220 && z < -227) return 'res';
-  if (x < -227 && z > 227) return 'ind';
-  if ((x >= 447 && z >= -220) || (z >= 447 && x >= -227)) return 'beach';
-  if (x >= 227 && x < 447 && z >= -220) return 'front';
-  if (x > -227 && x < 227 && z > 227) return 'park';
-  return 'res';
+  for (const a of ZONES_LIST) if (x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1) return a.id;
+  return 'zone';
 }
-const URBAN = new Set(['downtown', 'res', 'front', 'park', 'ind']);
 
-// ---------- Réseau routier (graphe) ----------
-const LINES = [], NODES = [], EDGES = [], nodeMap = new Map();
-function addLine(hz, c, a, b, name) { LINES.push({ hz, c, a, b, name }); }
-const MAJ = [-440, -220, 0, 220, 440];
-const HNAMES = { '-440': "Route de l'Aéroport", '-220': 'Avenue des Tilleuls', '0': 'Avenue de la République', '220': 'Rue du Parc', '440': 'Promenade du Sud' };
-const VNAMES = { '-440': "Boulevard de l'Ouest", '-220': 'Rue des Docks', '0': 'Boulevard Central', '220': 'Rue de la Forêt', '440': 'Boulevard de la Plage' };
-for (const c of MAJ) { addLine(true, c, -440, 440, HNAMES[c]); addLine(false, c, -440, 440, VNAMES[c]); }
-addLine(true, -110, -220, 220, 'Rue Haute'); addLine(true, 110, -220, 220, 'Rue Basse');
-addLine(false, -110, -220, 220, 'Rue Pasteur'); addLine(false, 110, -220, 220, 'Rue Victor-Hugo');
-addLine(false, -220, -505, -440, 'Allée des Hangars');
+// ---------- Carte externe (carte.json, obligatoire — voir editeur_carte_3d.html) ----------
+let CUSTOM_PROPS = [];
+let MAP = null; // la carte chargée (voir loadMap / boot) : spawn, roads, doors, parking, pedSpawns, areas, props, pickups
+async function loadMap() {
+  try {
+    const r = await fetch('carte.json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (Array.isArray(j.props)) CUSTOM_PROPS = j.props;
+    return j;
+  } catch (e) { return null; /* absent, invalide, ou page ouverte en local sans serveur (voir serveur.py) */ }
+}
+// convertit une pièce JSON (format partagé avec les éditeurs 3D) en mesh via les primitives du jeu
+function primFromJSON(p) {
+  const cat = p.cat || 'base', color = typeof p.color === 'string' ? parseInt(p.color.replace('#', ''), 16) : p.color;
+  if (p.prim === 'box') return box(p.w, p.h, p.d, color, p.x, p.y, p.z, cat, p.ry || 0);
+  if (p.prim === 'cyl') return cyl(p.rt, p.rb, p.h, color, p.x, p.y, p.z, p.seg || 12, cat);
+  if (p.prim === 'sph') return sph(p.r, color, p.x, p.y, p.z, cat, p.sx || 1, p.sy || 1, p.sz || 1);
+  if (p.prim === 'prism') return prism(p.len, p.h, p.depth, color, p.x, p.y, p.z, p.ry || 0, cat);
+  return null;
+}
+// place dans le monde les bâtiments/décors créés avec les éditeurs 3D externes et enregistre leurs collisions
+function placeCustomProps() {
+  for (const inst of CUSTOM_PROPS) {
+    const model = inst.model; if (!model || !Array.isArray(model.parts) || !model.parts.length) continue;
+    const g = new THREE.Group();
+    let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9, maxY = 0.5;
+    for (const p of model.parts) {
+      const m = primFromJSON(p); if (!m) continue; g.add(m);
+      let hw = 1, hd = 1;
+      if (p.prim === 'box') { hw = p.w / 2; hd = p.d / 2; }
+      else if (p.prim === 'cyl') { hw = hd = Math.max(p.rt, p.rb); }
+      else if (p.prim === 'sph') { hw = p.r * (p.sx || 1); hd = p.r * (p.sz || 1); }
+      else if (p.prim === 'prism') { hw = p.len / 2; hd = p.depth / 2; }
+      minX = Math.min(minX, p.x - hw); maxX = Math.max(maxX, p.x + hw);
+      minZ = Math.min(minZ, p.z - hd); maxZ = Math.max(maxZ, p.z + hd);
+      maxY = Math.max(maxY, (p.y || 0) + (p.h != null ? p.h : (p.r || 1)));
+    }
+    const ry = inst.ry || 0, s = inst.scale || 1, gx = inst.x, gz = inst.z, gy = groundH(gx, gz);
+    g.rotation.y = ry; g.scale.setScalar(s); g.position.set(gx, gy, gz);
+    staticRoot.add(g);
+    // emprise monde (rotation appliquée aux 4 coins de la boîte locale) pour les collisions et la mini-carte
+    const cs = Math.cos(ry), sn = Math.sin(ry);
+    let wx0 = 1e9, wx1 = -1e9, wz0 = 1e9, wz1 = -1e9;
+    for (const [lx, lz] of [[minX, minZ], [maxX, minZ], [minX, maxZ], [maxX, maxZ]]) {
+      const X = gx + (lx * cs - lz * sn) * s, Z = gz + (lx * sn + lz * cs) * s;
+      wx0 = Math.min(wx0, X); wx1 = Math.max(wx1, X); wz0 = Math.min(wz0, Z); wz1 = Math.max(wz1, Z);
+    }
+    if (inst.collide !== false) CW.box(wx0, wx1, wz0, wz1, maxY * s);
+    MAPB.push({ x: (wx0 + wx1) / 2, z: (wz0 + wz1) / 2, w: wx1 - wx0, d: wz1 - wz0, h: maxY * s });
+  }
+}
+
+// ---------- Réseau routier (graphe) — rempli à partir de map.roads, voir plus bas buildRoadGraph() ----------
+const NODES = [], EDGES = [], nodeMap = new Map();
 function nodeAt(x, z) {
-  const k = x + ',' + z; let n = nodeMap.get(k);
-  if (!n) { n = { id: NODES.length, x, z, adj: [] }; NODES.push(n); nodeMap.set(k, n); }
+  const k = Math.round(x * 10) + ',' + Math.round(z * 10); let n = nodeMap.get(k);
+  if (!n) { n = { id: NODES.length, x, z, adj: [], urban: false }; NODES.push(n); nodeMap.set(k, n); }
   return n;
 }
-for (const L of LINES) {
-  const ps = new Set([L.a, L.b]);
-  for (const O of LINES) { if (O.hz === L.hz) continue; if (O.c >= L.a && O.c <= L.b && L.c >= O.a && L.c <= O.b) ps.add(O.c); }
-  L.nodes = [...ps].sort((p, q) => p - q);
-  for (let i = 0; i < L.nodes.length - 1; i++) {
-    const A = L.hz ? nodeAt(L.nodes[i], L.c) : nodeAt(L.c, L.nodes[i]);
-    const B = L.hz ? nodeAt(L.nodes[i + 1], L.c) : nodeAt(L.c, L.nodes[i + 1]);
-    EDGES.push({ a: A, b: B, len: Math.hypot(B.x - A.x, B.z - A.z), line: L });
-    A.adj.push(B); B.adj.push(A);
-  }
-}
-function nearestLine(x, z) {
-  let best = null, bd = 1e9;
-  for (const L of LINES) {
-    const d = L.hz ? Math.hypot(x - clamp(x, L.a, L.b), z - L.c) : Math.hypot(x - L.c, z - clamp(z, L.a, L.b));
-    if (d < bd) { bd = d; best = L; }
-  }
-  return { line: best, dist: bd };
-}
-const roadDist = (x, z) => nearestLine(x, z).dist;
 
 // ---------- Registres remplis pendant la génération ----------
 const MAPB = [];            // emprises des bâtiments (carte)
@@ -785,7 +789,6 @@ const LAMPS = [];          // lampadaires (halos, lumières proches)
 const DOORS = [];          // portes / points d'entrée
 const PARK_SPOTS = [];     // voitures garées
 const WANDER = [];         // zones de flânerie des piétons
-const HEAL_SPOTS = [];     // trousses de soin
 const SIGN_MATS = [];
 const staticRoot = new THREE.Group();   // tout ce qui sera fusionné
 const K = kit(staticRoot);
@@ -902,622 +905,42 @@ function bench(x, z, ry) {
 }
 function trashBin(x, z) { K.cyl(0.3, 0.26, 0.9, 0x355a3a, x, 0.45 + groundH(x, z), z, 10, 'metal'); CW.circ(x, z, 0.3, 0.9); }
 
-// ---------- Tours / immeubles ----------
-const WALLS = [0xc9c2b4, 0xa9a39a, 0x8c8f93, 0xb8a48c, 0x7d858d, 0xd6cfc2, 0x9a8f84, 0x6f767e, 0xb89a80];
-const GLASS = [0x5b7486, 0x486070, 0x6d8a94, 0x3f5566, 0x5f7a70];
-const AWN = [0xb8433a, 0x2f6b8f, 0x3f7a4a, 0xd49a2a, 0x6a4a8a];
-function tower(cx, cz, w, d, floors, o = {}) {
-  const FH = 3.3, y0 = o.y0 || 0, GF = y0 ? 0 : 4.4, H = GF + floors * FH;
-  const wall = o.wall != null ? o.wall : wpick(WALLS), glassC = wpick(GLASS), gcat = wr(0, 1) < 0.6 ? 'glassLit' : 'glass';
-  const style = o.style || (wr(0, 1) < 0.45 ? 'glass' : 'grid');
-  if (!y0) {
-    K.box(w - 0.8, GF, d - 0.8, 0x2e3033, cx, GF / 2, cz);
-    K.box(w - 0.5, GF - 1.4, d - 0.5, 0x34444d, cx, (GF - 1.4) / 2 + 0.3, cz, 'glassLit');
-    K.box(w + 0.2, 0.7, d + 0.2, wall, cx, GF - 0.35, cz);
-    if (!o.noAwning) {
-      const ac = wpick(AWN);
-      if (wr(0, 1) < 0.7) K.box(w * 0.7, 0.12, 1.8, ac, cx, GF - 1.05, cz + d / 2 + 0.9);
-      if (wr(0, 1) < 0.5) K.box(1.8, 0.12, d * 0.6, ac, cx - w / 2 - 0.9, GF - 1.05, cz);
-    }
-  }
-  const bh = H - GF, by = y0 + GF + bh / 2;
-  if (style === 'glass') {
-    K.box(w - 0.7, bh, d - 0.7, glassC, cx, by, cz, gcat);
-    for (let f = 1; f <= floors; f++) K.box(w, 0.42, d, wall, cx, y0 + GF + f * FH - 0.2, cz);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.box(0.9, bh, 0.9, wall, cx + sx * (w / 2 - 0.45), by, cz + sz * (d / 2 - 0.45));
-  } else {
-    K.box(w - 0.8, bh, d - 0.8, wall, cx, by, cz);
-    const cols = Math.max(2, Math.round(w / 3.6)), rows = Math.max(2, Math.round(d / 3.6));
-    for (let i = 0; i < cols; i++) {
-      const x = cx - w / 2 + (i + 0.5) * w / cols, ww = w / cols * 0.56;
-      K.box(ww, bh - 0.3, 0.3, glassC, x, by, cz + d / 2 - 0.42, gcat);
-      K.box(ww, bh - 0.3, 0.3, glassC, x, by, cz - d / 2 + 0.42, gcat);
-    }
-    for (let i = 0; i < rows; i++) {
-      const z = cz - d / 2 + (i + 0.5) * d / rows, dd = d / rows * 0.56;
-      K.box(0.3, bh - 0.3, dd, glassC, cx + w / 2 - 0.42, by, z, gcat);
-      K.box(0.3, bh - 0.3, dd, glassC, cx - w / 2 + 0.42, by, z, gcat);
-    }
-    for (let f = 0; f <= floors; f++) K.box(w, 0.9, d, wall, cx, y0 + GF + f * FH, cz);
-  }
-  const top = y0 + H;
-  K.box(w + 0.3, 1.0, d + 0.3, wall, cx, top + 0.5, cz);
-  K.box(w - 1.2, 0.1, d - 1.2, 0x4b4e52, cx, top + 1.02, cz);
-  const nAC = 1 + Math.floor(wr(0, 3));
-  for (let i = 0; i < nAC; i++) K.box(wr(2, 3.5), 1.3, wr(2, 3.5), 0x9ba1a7, cx + wr(-w / 4, w / 4), top + 1.7, cz + wr(-d / 4, d / 4), 'metal');
-  if (floors > 10 && wr(0, 1) < 0.45) {
-    const tx = cx + wr(-w / 5, w / 5), tz = cz + wr(-d / 5, d / 5);
-    K.cyl(1.4, 1.4, 2.6, 0x6b5a4a, tx, top + 3.6, tz, 10, 'wood'); K.cyl(0, 1.6, 1, 0x4a3e34, tx, top + 5.4, tz, 10);
-    for (const s of [-1, 1]) K.box(0.15, 1.4, 0.15, 0x333333, tx + s, top + 1.7, tz);
-  }
-  if (floors > 18) {
-    K.cyl(0.08, 0.14, 9, 0x8a8f94, cx, top + 5.5, cz, 6, 'metal');
-    K.sph(0.28, 0xff3030, cx, top + 10.1, cz, 'glow');
-  }
-  if (!y0) {
-    CW.box(cx - w / 2 - 0.15, cx + w / 2 + 0.15, cz - d / 2 - 0.15, cz + d / 2 + 0.15, top + 1);
-    MAPB.push({ x: cx, z: cz, w, d, h: top });
-  }
-  if (!y0 && o.setback !== false && floors > 14 && wr(0, 1) < 0.5) {
-    tower(cx, cz, w * 0.66, d * 0.66, Math.round(floors * wr(0.25, 0.55)), { y0: top + 1, wall, style, setback: false });
-  }
-  return { x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h: top };
+// ---------- Routes (segments arbitraires dessinés dans l'éditeur de carte) ----------
+const ROADS = []; // { pts:[{x,z},...], width, name, urban }
+function distToSeg(x, z, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz;
+  let t = len2 > 1e-9 ? ((x - ax) * dx + (z - az) * dz) / len2 : 0;
+  t = clamp(t, 0, 1);
+  return Math.hypot(x - (ax + dx * t), z - (az + dz * t));
 }
-// petit bâtiment commercial (2-3 niveaux) avec vitrine
-function shopBuilding(x0, x1, z0, z1, floors, wall, face, opts = {}) {
-  const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, H = 4.4 + (floors - 1) * 3.3;
-  K.box(w, H, d, wall, cx, H / 2, cz);
-  K.box(w + 0.4, 0.6, d + 0.4, 0x3a3c40, cx, H + 0.3, cz);
-  const b = { x0, x1, z0, z1 };
-  const glassBand = (along, len) => {
-    const g = box(1, 1, 1, 0x3a4a52, 0, 0, 0, 'glassLit');
-    if (face === 'N' || face === 'S') { g.scale.set(len, 2.6, 0.2); g.position.set(along, 1.7, face === 'N' ? z0 - 0.05 : z1 + 0.05); }
-    else { g.scale.set(0.2, 2.6, len); g.position.set(face === 'W' ? x0 - 0.05 : x1 + 0.05, 1.7, along); }
-    staticRoot.add(g);
-  };
-  const along0 = face === 'N' || face === 'S' ? cx : cz, len = (face === 'N' || face === 'S' ? w : d) * 0.8;
-  glassBand(along0, len);
-  for (let f = 1; f < floors; f++) {
-    const n = Math.max(2, Math.round(len / 3.2));
-    for (let i = 0; i < n; i++) {
-      const a = along0 - len / 2 + (i + 0.5) * len / n;
-      const win = box(1, 1, 1, 0x2c3d4a, 0, 0, 0, wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
-      if (face === 'N' || face === 'S') { win.scale.set(1.3, 1.5, 0.2); win.position.set(a, 4.4 + (f - 1) * 3.3 + 1.6, face === 'N' ? z0 - 0.05 : z1 + 0.05); }
-      else { win.scale.set(0.2, 1.5, 1.3); win.position.set(face === 'W' ? x0 - 0.05 : x1 + 0.05, 4.4 + (f - 1) * 3.3 + 1.6, a); }
-      staticRoot.add(win);
-    }
+function nearestLine(x, z) {
+  let best = null, bd = 1e9;
+  for (const R of ROADS) for (let i = 0; i < R.pts.length - 1; i++) {
+    const A = R.pts[i], B = R.pts[i + 1], d = distToSeg(x, z, A.x, A.z, B.x, B.z);
+    if (d < bd) { bd = d; best = R; }
   }
-  if (opts.awning !== false) {
-    const aw = box(1, 1, 1, opts.awning || wpick(AWN), 0, 0, 0);
-    const fd = FACE_DIR[face];
-    if (fd[0] === 0) { aw.scale.set(len, 0.12, 1.8); aw.position.set(along0, 3.5, (fd[1] < 0 ? z0 : z1) + fd[1] * 0.9); }
-    else { aw.scale.set(1.8, 0.12, len); aw.position.set((fd[0] < 0 ? x0 : x1) + fd[0] * 0.9, 3.5, along0); }
-    staticRoot.add(aw);
-  }
-  CW.box(x0 - 0.1, x1 + 0.1, z0 - 0.1, z1 + 0.1, H + 0.6);
-  MAPB.push({ x: cx, z: cz, w, d, h: H });
-  return b;
+  return { line: best || { name: '' }, dist: bd };
 }
-// façade enterable : porte + enseigne + marqueur
-function addDoor(b, face, along, name, interior, blip, sign) {
-  const fd = FACE_DIR[face];
-  const door = box(1, 1, 1, 0x1c2328, 0, 0, 0, 'glassLit');
-  if (fd[0] === 0) door.scale.set(2.4, 2.8, 0.3); else door.scale.set(0.3, 2.8, 2.4);
-  onFace(door, face, b, along, 1.4 + 0.22, 0.05); door.rotation.y = 0; staticRoot.add(door);
-  const frame = box(1, 1, 1, 0xe8e4da, 0, 0, 0);
-  if (fd[0] === 0) frame.scale.set(3.0, 0.3, 0.4); else frame.scale.set(0.4, 0.3, 3.0);
-  onFace(frame, face, b, along, 3.05 + 0.22, 0.1); frame.rotation.y = 0; staticRoot.add(frame);
-  if (sign) {
-    const s = signMesh(sign.text, sign.w || 9, sign.h || 1.6, sign.bg, sign.fg, { border: sign.border, upright: sign.upright });
-    onFace(s, face, b, along, sign.y || 4.3, 0.25); world.add(s);
-  }
-  const bx = face === 'W' ? b.x0 : face === 'E' ? b.x1 : along, bz = face === 'N' ? b.z0 : face === 'S' ? b.z1 : along;
-  const d = { name, interior, blip, x: bx + fd[0] * 2.4, z: bz + fd[1] * 2.4, outX: fd[0], outZ: fd[1], kind: interior === 'garage' ? 'garage' : 'door' };
-  DOORS.push(d);
-  return d;
-}
-
-// ---------- Maisons ----------
-const HWALL = [0xe9dcc3, 0xd8b98f, 0xc9d4d8, 0xe3c4b0, 0xb9c8a8, 0xf0e6d2, 0xa7b8c9, 0xd6a58c, 0xe8d1a8];
-const ROOFS = [0x7a3b2e, 0x5a4a44, 0x3f4a55, 0x8a5a3a, 0x4d3a33, 0x6a2f2a];
-function house(fx, fz, face, sb = 6) {
-  const g = new THREE.Group(); const k = kit(g);
-  const w = wr(8, 10.5), d = wr(7, 9), floors = wr(0, 1) < 0.35 ? 2 : 1, h = floors * 3.0 + 0.3;
-  const wall = wpick(HWALL), roof = wpick(ROOFS), garage = wr(0, 1) < 0.5;
-  k.box(w + 0.3, 0.4, d + 0.3, 0xcfc8b8, 0, 0.2, 0);
-  k.box(w, h, d, wall, 0, h / 2, 0);
-  const rh = wr(2.2, 3.0);
-  k.prism(w + 0.9, rh, d + 1.1, roof, 0, h, 0);
-  k.box(0.8, 2.4, 0.8, 0x8a6f5f, w * 0.25, h + rh * 0.55, -d * 0.18);
-  const doorX = wr(-w / 4, w / 5);
-  k.box(1.1, 2.2, 0.12, wpick([0x5b3a29, 0x2f4f6f, 0x7a2a2a, 0x2f5a3a, 0xe8e4da]), doorX, 1.5, d / 2 + 0.06);
-  k.box(2.2, 0.2, 1.4, 0xcfc8b8, doorX, 0.3, d / 2 + 0.7);
-  k.box(2.0, 0.12, 1.2, roof, doorX, 2.95, d / 2 + 0.6);
-  k.box(0.16, 0.22, 0.16, 0xfff0c0, doorX + 0.85, 2.3, d / 2 + 0.12, 'glow');
-  const win = (x, y, z, side) => {
-    const lit = wr(0, 1) < 0.55 ? 'glassLit' : 'glass';
-    if (!side) { k.box(1.35, 1.25, 0.14, 0xf2efe6, x, y, z); k.box(1.1, 1.0, 0.18, 0x2c3d4a, x, y, z, lit); k.box(1.55, 0.1, 0.3, 0xf2efe6, x, y - 0.65, z); }
-    else { k.box(0.14, 1.25, 1.35, 0xf2efe6, x, y, z); k.box(0.18, 1.0, 1.1, 0x2c3d4a, x, y, z, lit); }
-  };
-  for (let f = 0; f < floors; f++) {
-    const y = 1.9 + f * 3.0;
-    for (const wx of [-w / 2 + 1.4, w / 2 - 1.4]) if (Math.abs(wx - doorX) > 1.8 || f > 0) win(wx, y, d / 2 + 0.04);
-    win(-w / 2 - 0.04, y, 0, true); win(w / 2 + 0.04, y, -d / 5, true);
-    win(0, y, -d / 2 - 0.04);
-  }
-  let maxX = w / 2;
-  if (garage) {
-    k.box(4.2, 3.0, d * 0.9, wall, w / 2 + 2.1, 1.5, 0.05 * d);
-    k.box(4.6, 0.25, d * 0.9 + 0.4, roof, w / 2 + 2.1, 3.1, 0.05 * d);
-    k.box(3.2, 2.4, 0.1, 0xdedad0, w / 2 + 2.1, 1.3, d * 0.5 + 0.02);
-    maxX = w / 2 + 4.2;
-    k.box(3.4, 0.05, sb, 0xb4afa6, w / 2 + 2.1, 0.03, d / 2 + sb / 2);
-  }
-  k.box(1.2, 0.05, sb, 0xc8c1b2, doorX, 0.035, d / 2 + sb / 2);
-  // haie en limite de terrain
-  const hedgeZ = d / 2 + sb - 0.6;
-  k.box(Math.max(0.5, doorX - 0.8 + w / 2 + 1), 0.9, 0.7, 0x3d6e35, (-w / 2 - 1 + doorX - 0.8) / 2, 0.45, hedgeZ);
-  if (!garage) k.box(Math.max(0.5, w / 2 + 1 - doorX - 0.8), 0.9, 0.7, 0x3d6e35, (doorX + 0.8 + w / 2 + 1) / 2, 0.45, hedgeZ);
-  k.box(0.35, 1.1, 0.35, 0x2f4a6a, doorX + 1.3, 0.55, hedgeZ + 0.3);
-  if (wr(0, 1) < 0.22) { k.box(5.2, 0.12, 3.4, 0xe8e4da, -w / 5, 0.06, -d / 2 - 5.5); k.box(4.6, 0.14, 2.8, 0x3aa7d0, -w / 5, 0.08, -d / 2 - 5.5, 'glass'); }
-  const rot = FACE_ROT[face], fd = FACE_DIR[face];
-  const cxw = fx - fd[0] * (sb + d / 2), czw = fz - fd[1] * (sb + d / 2);
-  g.rotation.y = rot; g.position.set(cxw, 0, czw); staticRoot.add(g);
-  // emprise monde
-  const cs = Math.cos(rot), sn = Math.sin(rot);
-  let ax0 = 1e9, ax1 = -1e9, az0 = 1e9, az1 = -1e9;
-  for (const [lx, lz] of [[-w / 2, -d / 2], [maxX, -d / 2], [-w / 2, d / 2], [maxX, d / 2]]) {
-    const X = cxw + lx * cs + lz * sn, Z = czw - lx * sn + lz * cs;
-    ax0 = Math.min(ax0, X); ax1 = Math.max(ax1, X); az0 = Math.min(az0, Z); az1 = Math.max(az1, Z);
-  }
-  CW.box(ax0, ax1, az0, az1, h + rh);
-  MAPB.push({ x: (ax0 + ax1) / 2, z: (az0 + az1) / 2, w: ax1 - ax0, d: az1 - az0, h: h + rh });
-  // arbre de jardin
-  const bx = cxw - fd[0] * (d / 2 + wr(4, 8)) + wr(-3, 3) * Math.abs(fd[1]), bz = czw - fd[1] * (d / 2 + wr(4, 8)) + wr(-3, 3) * Math.abs(fd[0]);
-  treeRound(bx, bz, wr(0.8, 1.15));
-  if (garage && wr(0, 1) < 0.35) {
-    const gx = w / 2 + 2.1, gz = d / 2 + sb * 0.55;
-    PARK_SPOTS.push({ x: cxw + gx * cs + gz * sn, z: czw - gx * sn + gz * cs, heading: rot, res: true });
-  }
-}
-
-// ---------- Blocs du centre-ville ----------
-function downtownBlock(x0, x1, z0, z1) {
-  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, key = Math.round(cx) + ',' + Math.round(cz);
-  const special = SPECIAL[key];
-  slab(x0, x1, z0, z1, key === '165,165' ? 0x3a3c40 : 0xa29f97, key === '165,165' ? 0.12 : 0.22);
-  // arbres d'alignement
-  for (let t = x0 + 12; t < x1 - 8; t += 24) { treeRound(t, z0 + 4.2, 0.7); treeRound(t, z1 - 4.2, 0.7); }
-  if (special) { special(x0, x1, z0, z1, cx, cz); return; }
-  const tall = clamp(1 - Math.hypot(cx, cz) / 300, 0.1, 1);
-  const ix0 = x0 + 6.5, ix1 = x1 - 6.5, iz0 = z0 + 6.5, iz1 = z1 - 6.5, r = wr(0, 1);
-  if (r < 0.3) {
-    tower(cx, cz, wr(52, 72), wr(52, 72), Math.round(lerp(10, 32, tall) * wr(0.7, 1.15)));
-  } else if (r < 0.72) {
-    for (const qx of [-1, 1]) for (const qz of [-1, 1]) {
-      const w = wr(28, 38), d = wr(28, 38);
-      tower(qx < 0 ? ix0 + w / 2 : ix1 - w / 2, qz < 0 ? iz0 + d / 2 : iz1 - d / 2, w, d, Math.round(wr(4, lerp(8, 24, tall))));
-    }
-  } else {
-    const w = wr(34, 39), d = wr(60, 80);
-    tower(ix0 + w / 2, cz, w, d, Math.round(wr(6, lerp(10, 28, tall))));
-    tower(ix1 - w / 2, cz, w, d, Math.round(wr(6, lerp(10, 28, tall))));
-  }
-}
-const SPECIAL = {
-  // Place centrale (point de départ)
-  '-55,-55': (x0, x1, z0, z1, cx, cz) => {
-    K.box(80, 0.04, 80, 0xc4bdb0, cx, 0.24, cz);
-    K.cyl(7, 7.4, 0.8, 0xd9d3c7, cx, 0.6, cz, 24); K.cyl(6.3, 6.3, 0.2, 0x3f93b8, cx, 0.95, cz, 24, 'glass');
-    K.cyl(2.3, 2.6, 1.2, 0xd9d3c7, cx, 1.4, cz, 16); K.cyl(0.5, 0.7, 3, 0xd9d3c7, cx, 2.8, cz, 10);
-    K.cyl(1.6, 0.9, 0.5, 0xd9d3c7, cx, 4.4, cz, 14); K.sph(0.6, 0x9cd4ea, cx, 4.9, cz, 'glass');
-    CW.circ(cx, cz, 7.5, 1.2);
-    for (const [qx, qz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      const gx = cx + qx * 25, gz = cz + qz * 25;
-      K.box(22, 0.3, 22, 0x4c8a3f, gx, 0.3, gz); K.box(23, 0.35, 23, 0xb6afa2, gx, 0.2, gz);
-      treeRound(gx + qx * 3, gz + qz * 3, 1.2);
-      bench(gx - qx * 13, gz, qx > 0 ? -Math.PI / 2 : Math.PI / 2);
-      parkLamp(gx - qx * 12, gz - qz * 12);
-    }
-    K.box(3, 3, 3, 0x2f5a3a, cx + 30, 1.72, cz - 2); K.box(3.6, 0.3, 3.6, 0x1f3a28, cx + 30, 3.35, cz - 2);
-    CW.box(cx + 28.5, cx + 31.5, cz - 3.5, cz - 0.5, 3.4);
-    WANDER.push({ x: cx, z: cz, r: 36 });
-    MAP_AREAS.push({ x0: x0 + 4, x1: x1 - 4, z0: z0 + 4, z1: z1 - 4, c: '#8a857a' });
-  },
-  // Planque (appartement)
-  '55,-55': (x0, x1, z0, z1, cx, cz) => {
-    const b = tower(x0 + 6.5 + 18, cz, 36, 36, 9, { style: 'grid', wall: 0xb89a80, noAwning: true, setback: false });
-    addDoor(b, 'W', cz, 'Planque', 'flat', 'P', { text: 'Résidence Les Bulles', bg: '#1b1d20', fg: '#f2c230', w: 8, h: 1.2, upright: true });
-    tower(x1 - 6.5 - 17, z0 + 6.5 + 17, 34, 34, 14);
-    tower(x1 - 6.5 - 17, z1 - 6.5 - 17, 34, 34, 7);
-  },
-  // Supérette du centre
-  '-55,55': (x0, x1, z0, z1, cx, cz) => {
-    const b = shopBuilding(cx - 24, cx + 24, z0 + 6.5, z0 + 28, 2, 0xe6e1d6, 'N', { awning: 0x2f7a45 });
-    addDoor(b, 'N', cx, 'Supérette 24/7', 'shop', 'S', { text: 'Supérette 24/7', bg: '#1f7a45', fg: '#ffffff', w: 12, h: 1.8, y: 5.6 });
-    tower(x0 + 6.5 + 20, z1 - 6.5 - 25, 40, 50, 11); tower(x1 - 6.5 - 20, z1 - 6.5 - 25, 40, 50, 6);
-  },
-  // Carrosserie
-  '165,55': (x0, x1, z0, z1, cx, cz) => {
-    const gx0 = x0 + 12, gx1 = x0 + 44, gz0 = cz - 16, gz1 = cz + 16;
-    K.box(gx1 - gx0, 7, gz1 - gz0, 0xd7d2c6, (gx0 + gx1) / 2, 3.5, cz);
-    K.box(0.4, 5.6, 14, 0x15171a, gx0 - 0.1, 2.8, cz);
-    for (let i = -3; i <= 3; i++) K.box(0.5, 0.35, 14, i % 2 ? 0xf2c230 : 0x1a1a1a, gx0 - 0.3, 5.9, cz + i * 0.001);
-    K.box(gx1 - gx0 + 0.6, 0.5, gz1 - gz0 + 0.6, 0x2f6b9f, (gx0 + gx1) / 2, 7.2, cz);
-    CW.box(gx0, gx1, gz0, gz1, 7.4); MAPB.push({ x: (gx0 + gx1) / 2, z: cz, w: gx1 - gx0, d: gz1 - gz0, h: 7 });
-    const s = signMesh('Carrosserie Express', 12, 1.8, '#1d4f9e', '#ffffff'); s.position.set(gx0 - 0.3, 8.6, cz); s.rotation.y = -Math.PI / 2; world.add(s);
-    // une voiture ne peut physiquement pas s'approcher à moins de ~2.5 unités du mur (rayon de collision du véhicule) :
-    // le marquage au sol doit tenir tout entier dans la zone réellement accessible, sinon on bute dessus avant de l'avoir traversé.
-    // un lampadaire du trottoir se trouve juste au nord du bâtiment (près de gz0) : on décale et on réduit le marquage pour l'éviter aussi.
-    const gcx = gx0 - 5, gcz = cz + 4;
-    DOORS.push({ name: 'Carrosserie Express', interior: 'garage', blip: 'G', x: gcx, z: gcz, outX: -1, outZ: 0, kind: 'garage' });
-    K.box(6, 0.05, 10, 0xf2c230, gcx, 0.21, gcz);
-    K.box(5.4, 0.05, 9.4, 0x3a3c40, gcx, 0.27, gcz); // nettement au-dessus du marquage jaune : plus de scintillement
-    tower(x1 - 6.5 - 18, cz, 36, 60, 12);
-  },
-  // Armurerie
-  '-165,-165': (x0, x1, z0, z1, cx, cz) => {
-    const b = shopBuilding(cx - 20, cx + 20, z1 - 30, z1 - 6.5, 2, 0x55595e, 'S', { awning: 0x7a1f22 });
-    addDoor(b, 'S', cx, 'Armurerie Le Calibre', 'guns', 'A', { text: 'Armurerie Le Calibre', bg: '#1a1a1a', fg: '#e4484c', w: 12, h: 1.8, y: 5.6, border: true });
-    tower(cx, z0 + 6.5 + 25, 80, 46, 16);
-  },
-  // Boutique de vêtements
-  '-165,-55': (x0, x1, z0, z1, cx, cz) => {
-    const b = shopBuilding(cx - 20, cx + 20, z1 - 30, z1 - 6.5, 2, 0xe6d9c3, 'S', { awning: 0xc95f8a });
-    addDoor(b, 'S', cx, 'Boutique Chic', 'clothes', 'V', { text: 'Boutique Chic', bg: '#c95f8a', fg: '#ffffff', w: 11, h: 1.8, y: 5.6 });
-    tower(cx, z0 + 6.5 + 18, 42, 32, 9); // éloignée de la façade pour ne pas ressembler à une seconde entrée
-  },
-  // Salon de coiffure
-  '55,-165': (x0, x1, z0, z1, cx, cz) => {
-    const b = shopBuilding(cx - 16, cx + 16, z0 + 6.5, z0 + 24, 2, 0xdec8e0, 'N', { awning: 0x8a5ab0 });
-    addDoor(b, 'N', cx, 'Salon de coiffure', 'hair', 'C', { text: 'COIFFEUR', bg: '#8a5ab0', fg: '#ffffff', w: 9.5, h: 1.8, y: 5.6 });
-    tower(cx, z1 - 6.5 - 16, 34, 30, 8);
-  },
-  // Hôpital
-  '55,55': (x0, x1, z0, z1, cx, cz) => {
-    const b = shopBuilding(cx - 26, cx + 26, z0 + 6.5, z0 + 30, 3, 0xf2f0ea, 'N', { awning: 0xd8332b });
-    addDoor(b, 'N', cx, 'Hôpital Sainte-Bulle', 'hospital', 'H', { text: 'HÔPITAL', bg: '#d8332b', fg: '#ffffff', w: 11, h: 2, y: 6.4, border: true });
-    K.box(0.45, 2.6, 0.32, 0xd8332b, cx, 8.7, z0 + 6.5 - 0.05); K.box(1.7, 0.45, 0.32, 0xd8332b, cx, 8.7, z0 + 6.5 - 0.05); // croix
-    tower(cx, z1 - 6.5 - 22, 46, 40, 9, { style: 'grid', wall: 0xe7e3da });
-    // dépose ambulances + camion de pompiers devant l'entrée, purement décoratifs
-    for (const ax of [cx - 9, cx + 9]) { const amb = makeVehicle('ambulance', ax, z0 + 3.2, 0); amb.persistent = true; }
-    const ft = makeVehicle('firetruck', cx + 21, z0 + 11, Math.PI / 2); ft.persistent = true;
-    MAP_AREAS.push({ x0, x1, z0, z1, c: '#cdc7bb' });
-  },
-  // Parking
-  '165,165': (x0, x1, z0, z1, cx, cz) => {
-    for (let row = 0; row < 3; row++) {
-      const rz = z0 + 20 + row * 28;
-      for (let i = 0; i < 12; i++) {
-        const px = x0 + 12 + i * 6.3;
-        K.box(0.15, 0.02, 5.4, 0xf0ede4, px - 3.15, 0.135, rz);
-        if (wr(0, 1) < 0.28) PARK_SPOTS.push({ x: px, z: rz, heading: row % 2 ? 0 : Math.PI });
-      }
-    }
-    K.box(4, 3, 3, 0xd9d3c7, x1 - 10, 1.6, z1 - 10); CW.box(x1 - 12, x1 - 8, z1 - 11.5, z1 - 8.5, 3);
-    MAP_AREAS.push({ x0, x1, z0, z1, c: '#4a4c50' });
-  }
-};
-
-// ---------- Blocs résidentiels ----------
-function resBlock(x0, x1, z0, z1) {
-  sidewalkRing(x0, x1, z0, z1, 5, 0xb7b2a8);
-  const step = 23;
-  for (let t = x0 + 30; t <= x1 - 30; t += step) { house(t + wr(-2, 2), z0 + 5, 'N'); house(t + wr(-2, 2), z1 - 5, 'S'); }
-  for (let t = z0 + 32; t <= z1 - 32; t += step) { house(x0 + 5, t + wr(-2, 2), 'W'); house(x1 - 5, t + wr(-2, 2), 'E'); }
-  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, hw = (x1 - x0) / 2 - 42;
-  if (hw > 20) {
-    // square au cœur de l'îlot
-    K.box(40, 0.1, 26, 0xb95b3c, cx, 0.05, cz); K.box(38, 0.12, 24, 0xc6694a, cx, 0.06, cz);
-    for (const s of [-1, 1]) { K.cyl(0.08, 0.08, 3, 0xdddddd, cx + s * 17, 1.5, cz, 6, 'metal'); K.box(1.8, 1.1, 0.1, 0xffffff, cx + s * 17.5, 3.2, cz); CW.circ(cx + s * 17, cz, 0.2, 3); }
-    for (let i = 0; i < 16; i++) { const a = wr(0, TAU), rr = wr(24, hw); (i % 3 ? treeRound : treePine)(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr * 0.9, wr(0.9, 1.3)); }
-    bench(cx, cz - 16, Math.PI); bench(cx, cz + 16, 0);
-    parkLamp(cx - 22, cz - 16); parkLamp(cx + 22, cz + 16);
-    WANDER.push({ x: cx, z: cz, r: 30 });
-    HEAL_SPOTS.push({ x: cx + 22, z: cz - 14 });
-  }
-}
-
-// ---------- Front de mer ----------
-const HOTELS = ['Azur', 'Le Flamant', 'Riviera', 'Les Mouettes', 'Bellevue', 'Miramar', 'Corail', 'Soleil', 'Les Pins'];
-const PASTEL = [0xf2d7c9, 0xcde4e0, 0xf3e3b5, 0xe8c9d8, 0xd5e3c3, 0xf5ede0, 0xbfd6e8];
-function hotel(x0, x1, z0, z1, floors, name, face) {
-  const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, H = 4.4 + floors * 3.2, wall = wpick(PASTEL);
-  K.box(w, H, d, wall, cx, H / 2, cz);
-  K.box(w - 1, 3.6, d - 1, 0x344850, cx, 2.0, cz, 'glassLit');
-  K.box(w + 0.6, 0.8, d + 0.6, 0xf5f2ea, cx, H + 0.4, cz);
-  const east = face === 'E';
-  for (let f = 0; f < floors; f++) {
-    const y = 4.4 + f * 3.2;
-    if (east) {
-      K.box(2.2, 0.2, d - 2, 0xf5f2ea, x1 + 1.1, y, cz);
-      K.box(0.1, 1.0, d - 2, 0x9fc7d6, x1 + 2.15, y + 0.6, cz, 'glass');
-      for (let i = 0; i < Math.round(d / 4); i++) K.box(0.2, 1.9, 2.2, 0x2c3d4a, x1 + 0.05, y + 1.4, z0 + 2 + i * (d - 4) / Math.max(1, Math.round(d / 4) - 1), wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
-    } else {
-      for (let i = 0; i < Math.round(w / 4); i++) {
-        const x = x0 + 2 + i * (w - 4) / Math.max(1, Math.round(w / 4) - 1);
-        K.box(2.2, 1.9, 0.2, 0x2c3d4a, x, y + 1.4, face === 'N' ? z0 - 0.05 : z1 + 0.05, wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
-      }
-    }
-  }
-  const s = signMesh('Hôtel ' + name, Math.min(w, d) * 0.8, 2.2, '#f5f2ea', '#1d4f9e', { upright: true });
-  if (east) { s.position.set(cx, H + 2.2, cz); s.rotation.y = Math.PI / 2; s.position.x = x1 + 0.2; }
-  else onFace(s, face, { x0, x1, z0, z1 }, cx, H + 2.2, 0.3);
-  world.add(s);
-  CW.box(x0 - 0.1, x1 + (east ? 2.3 : 0.1), z0 - 0.1, z1 + 0.1, H + 1);
-  MAPB.push({ x: cx, z: cz, w, d, h: H });
-}
-function frontBlock(x0, x1, z0, z1) {
-  sidewalkRing(x0, x1, z0, z1, 6, 0xd9cdb2);
-  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, key = Math.round(cx) + ',' + Math.round(cz);
-  // rangée d'hôtels face à la plage (côté est)
-  const clubHere = key === '330,110';
-  const slots = clubHere ? [z0 + 12, z1 - 60] : [z0 + 12, cz - 26, z1 - 60];
-  for (const sz of slots) hotel(x1 - 6 - 28, x1 - 6 - 3, sz, sz + 48, Math.round(wr(5, 10)), wpick(HOTELS), 'E');
-  if (clubHere) {
-    const b0 = { x0: x1 - 6 - 30, x1: x1 - 6, z0: cz - 16, z1: cz + 16 };
-    K.box(30, 9, 32, 0x1c1a24, (b0.x0 + b0.x1) / 2, 4.5, cz);
-    for (const [y, c] of [[8.6, 0xff3fb4], [0.9, 0x37e0ff]]) K.box(0.3, 0.3, 32, c, b0.x1 + 0.1, y, cz, 'glow');
-    for (let i = -2; i <= 2; i++) K.box(0.3, 7.2, 0.3, i % 2 ? 0xff3fb4 : 0x37e0ff, b0.x1 + 0.1, 4.6, cz + i * 6, 'glow');
-    CW.box(b0.x0, b0.x1, b0.z0, b0.z1, 9.5); MAPB.push({ x: (b0.x0 + b0.x1) / 2, z: cz, w: 30, d: 32, h: 9 });
-    addDoor(b0, 'E', cz, 'Le Néon', 'club', 'N', { text: 'LE NÉON', bg: '#12091c', fg: '#ff4fc0', w: 10, h: 2.2, y: 6.2, upright: true });
-  }
-  // boutiques & cafés côté ville (ouest) + terrasse
-  const wx0 = x0 + 6;
-  for (let t = z0 + 10; t < z1 - 30; t += 34) {
-    const b = shopBuilding(wx0, wx0 + 18, t, t + 26, 2, wpick(PASTEL), 'W');
-    if (key === '330,-110' && Math.abs(t + 13 - cz) < 20 && !DOORS.find(d => d.name === 'Supérette du Port')) {
-      addDoor(b, 'W', t + 13, 'Supérette du Port', 'shop', 'S', { text: 'Supérette 24/7', bg: '#1f7a45', fg: '#ffffff', w: 10, h: 1.6, y: 5.4 });
-    }
-  }
-  // cœur d'îlot : placette & palmiers & parking
-  const px0 = wx0 + 24, px1 = x1 - 6 - 36;
-  if (px1 - px0 > 30) {
-    if (key === '330,330') {
-      K.box(px1 - px0, 0.08, z1 - z0 - 30, 0x3a3c40, (px0 + px1) / 2, 0.05, cz);
-      for (let i = 0; i < 8; i++) if (wr(0, 1) < 0.5) PARK_SPOTS.push({ x: px0 + 10 + i * ((px1 - px0 - 20) / 7), z: cz - 20, heading: 0 });
-      MAP_AREAS.push({ x0: px0, x1: px1, z0: z0 + 15, z1: z1 - 15, c: '#4a4c50' });
-    } else {
-      for (let i = 0; i < 14; i++) palm(wr(px0 + 4, px1 - 4), wr(z0 + 16, z1 - 16), wr(0.8, 1.1));
-      WANDER.push({ x: (px0 + px1) / 2, z: cz, r: 30 });
+const roadDist = (x, z) => nearestLine(x, z).dist;
+// construit le graphe (NODES/EDGES, utilisé par les piétons et le trafic) à partir des routes de la carte
+function buildRoadGraph(roads) {
+  for (const r of roads) {
+    const pts = r.points || [];
+    if (pts.length < 2) continue;
+    const road = { pts, width: r.width || 12, name: r.name || '', urban: r.urban !== false };
+    ROADS.push(road);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = nodeAt(pts[i].x, pts[i].z), B = nodeAt(pts[i + 1].x, pts[i + 1].z);
+      const len = Math.hypot(B.x - A.x, B.z - A.z);
+      if (len < 0.01) continue;
+      EDGES.push({ a: A, b: B, len, line: road, urban: road.urban });
+      A.adj.push(B); B.adj.push(A);
+      if (road.urban) { A.urban = true; B.urban = true; }
     }
   }
 }
-
-// ---------- Parc ----------
-function parkBlock(x0, x1, z0, z1) {
-  sidewalkRing(x0, x1, z0, z1, 5, 0xb7b2a8);
-  MAP_AREAS.push({ x0: x0 + 5, x1: x1 - 5, z0: z0 + 5, z1: z1 - 5, c: '#3f6a38' });
-  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-  K.box(x1 - x0 - 10, 0.05, 5, 0xcbbd9c, cx, 0.03, cz); K.box(5, 0.05, z1 - z0 - 10, 0xcbbd9c, cx, 0.03, cz);
-  if (cx < 0) {
-    K.box(62, 0.2, 40, 0xcbbd9c, cx - 45, 0.05, cz - 45); K.box(58, 0.25, 36, 0x3f8fb0, cx - 45, 0.06, cz - 45, 'glass');
-    CW.box(cx - 74, cx - 16, cz - 63, cz - 27, 1.5);
-    MAP_AREAS.push({ x0: cx - 74, x1: cx - 16, z0: cz - 63, z1: cz - 27, c: '#2f6784' });
-    // kiosque
-    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; K.cyl(0.15, 0.15, 3.2, 0xf2efe6, cx + 40 + Math.cos(a) * 5, 1.6, cz + 40 + Math.sin(a) * 5, 8); }
-    K.cyl(5.8, 6, 0.4, 0xd9d3c7, cx + 40, 0.2, cz + 40, 16); K.cyl(0, 6.6, 2.6, 0x3a6a5a, cx + 40, 4.5, cz + 40, 8);
-    CW.circ(cx + 40, cz + 40, 5.5, 0.4);
-  } else {
-    // aire de jeux
-    K.box(24, 0.1, 24, 0xd18c58, cx + 40, 0.05, cz - 40);
-    K.box(2, 3, 2, 0xe4484c, cx + 36, 1.5, cz - 40); K.box(1.2, 0.2, 5, 0xf2c230, cx + 36, 1.6, cz - 37.2, 'metal').rotation.x = -0.5;
-    for (const s of [-1, 1]) K.box(0.2, 3, 0.2, 0x2f6b9f, cx + 44 + s * 3, 1.5, cz - 42, 'metal');
-    K.box(6.4, 0.2, 0.2, 0x2f6b9f, cx + 44, 3, cz - 42, 'metal');
-    CW.box(cx + 35, cx + 37, cz - 41, cz - 39, 3);
-    K.box(8, 3, 4, 0xf5f2ea, cx - 40, 1.5, cz + 40); K.box(8.6, 0.3, 5.4, 0xe4484c, cx - 40, 3.1, cz + 40);
-    CW.box(cx - 44, cx - 36, cz + 38, cz + 42, 3.2);
-  }
-  for (let i = 0; i < 38; i++) {
-    const x = wr(x0 + 10, x1 - 10), z = wr(z0 + 10, z1 - 10);
-    if (Math.abs(x - cx) < 6 || Math.abs(z - cz) < 6) continue;
-    if (cx < 0 && x > cx - 78 && x < cx - 12 && z > cz - 67 && z < cz - 23) continue;
-    if (Math.hypot(x - cx - 40, z - cz - 40) < 9 || Math.hypot(x - cx - 40, z - cz + 40) < 15 || Math.hypot(x - cx + 40, z - cz - 40) < 8) continue;
-    (i % 4 ? treeRound : treePine)(x, z, wr(0.9, 1.4));
-  }
-  for (let t = -80; t <= 80; t += 40) { bench(cx + t, cz - 5, 0); bench(cx + 5, cz + t + 20, Math.PI / 2); parkLamp(cx + t + 6, cz + 4); parkLamp(cx - 4, cz + t + 12); }
-  WANDER.push({ x: cx, z: cz, r: 80 });
-  HEAL_SPOTS.push({ x: cx + 8, z: cz + 8 });
-}
-
-// ---------- Zone industrielle ----------
-function warehouse(cx, cz, w, d, h, face) {
-  const wall = wpick([0x9a958a, 0x8a9096, 0xa39279, 0x7f8a80, 0xb2aa96]);
-  K.box(w, h, d, wall, cx, h / 2, cz, 'metal');
-  K.box(w + 0.6, 0.6, d + 0.6, 0x4f4a42, cx, h + 0.3, cz);
-  const n = Math.floor(w / 6);
-  for (let i = 0; i < n; i++) { const sh = box(w / n - 0.4, 0.9, d, 0x6d6455, cx - w / 2 + (i + 0.5) * w / n, h + 0.9, cz); sh.rotation.z = 0.25; staticRoot.add(sh); }
-  const fd = FACE_DIR[face], b = { x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 };
-  const L = fd[0] === 0 ? w : d, nd = Math.max(1, Math.floor(L / 12));
-  for (let i = 0; i < nd; i++) {
-    const a = (fd[0] === 0 ? cx : cz) - L / 2 + (i + 0.5) * L / nd;
-    const dr = box(1, 1, 1, 0x2f3236, 0, 0, 0, 'metal');
-    if (fd[0] === 0) dr.scale.set(5, 5.5, 0.3); else dr.scale.set(0.3, 5.5, 5);
-    onFace(dr, face, b, a, 2.75, 0.05); dr.rotation.y = 0; staticRoot.add(dr);
-    const st = box(1, 1, 1, 0xf2c230, 0, 0, 0);
-    if (fd[0] === 0) st.scale.set(5.4, 0.35, 0.35); else st.scale.set(0.35, 0.35, 5.4);
-    onFace(st, face, b, a, 5.7, 0.1); st.rotation.y = 0; staticRoot.add(st);
-  }
-  CW.box(b.x0, b.x1, b.z0, b.z1, h + 1);
-  MAPB.push({ x: cx, z: cz, w, d, h });
-}
-const CONT = [0xb0432f, 0x2f6ea5, 0xd08a2c, 0x556b2f, 0x8a3f6f, 0x2f8a7a, 0xc9c3b3];
-function container(x, z, level, rotated) {
-  const c = wpick(CONT), y = level * 2.62 + 1.3;
-  const g = new THREE.Group(); const k = kit(g);
-  k.box(6.05, 2.6, 2.44, c, 0, 0, 0, 'metal');
-  for (let i = -2; i <= 2; i++) k.box(0.08, 2.5, 2.48, 0x000000, i * 1.15, 0, 0);
-  g.position.set(x, y, z); if (rotated) g.rotation.y = Math.PI / 2; staticRoot.add(g);
-  if (level === 0) { const hx = rotated ? 1.25 : 3.05, hz = rotated ? 3.05 : 1.25; CW.box(x - hx, x + hx, z - hz, z + hz, 2.6 * 2); }
-}
-let fencePlaced = false;
-function fenceYard(gx, gz) {
-  if (fencePlaced) return; fencePlaced = true;
-  const kx = gx + 6, kz = gz + 4;
-  K.box(8, 3.2, 6, 0x4a4c40, kx, 1.6, kz, 'metal'); K.box(8.4, 0.3, 6.4, 0x2f2f2a, kx, 3.25, kz);
-  K.box(0.1, 1.6, 1.4, 0xdedad0, kx - 4.05, 1.3, kz, 'glass');
-  CW.box(kx - 4.2, kx + 4.2, kz - 3.2, kz + 3.2, 3.6); MAPB.push({ x: kx, z: kz, w: 8.4, d: 6.4, h: 3.2 });
-  const s = signMesh('Export', 10, 1.6, '#8a4a1e', '#ffffff'); s.position.set(kx, 4.3, kz - 3.35); world.add(s);
-  for (let i = 0; i < 3; i++) { const a = i * 2.1; K.box(3.6, 1.1, 1.7, wpick(PAINT), kx + 10 + Math.cos(a) * 6, 0.55 + i * 0.05, kz + 6 + Math.sin(a) * 5, 'metal'); }
-  // marquage au sol loin de tout mur, pour ne pas reproduire le souci du garage
-  const fx = kx, fz = kz + 12;
-  DOORS.push({ name: 'Export', kind: 'fence', blip: 'F', x: fx, z: fz, outX: 0, outZ: -1 });
-  K.box(7, 0.05, 10, 0xf2c230, fx, 0.21, fz);
-  K.box(6.4, 0.05, 9.4, 0x3a3c40, fx, 0.27, fz);
-}
-function indArea(x0, x1, z0, z1) {
-  plate(x0, x1, z0, z1, 0x8f8b82, '#6b6862');
-  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
-  const cells = [];
-  for (let gx = x0 + 14; gx < x1 - 30; gx += 48) for (let gz = z0 + 14; gz < z1 - 26; gz += 42) cells.push([gx, gz]);
-  for (const [gx, gz] of cells) {
-    if (!fencePlaced) { fenceYard(gx, gz); continue; }
-    const r = wr(0, 1);
-    if (r < 0.45) warehouse(gx + 20, gz + 16, wr(30, 40), wr(22, 30), wr(8, 12), wpick(['N', 'S']));
-    else if (r < 0.75) { for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) { const lv = wr(0, 1) < 0.4 ? 2 : 1; for (let l = 0; l < lv; l++) container(gx + 5 + i * 7, gz + 6 + j * 3.2, l, false); } }
-    else if (r < 0.88) {
-      for (let i = 0; i < 3; i++) { K.cyl(4, 4, 14, 0xc9c6bd, gx + 8 + i * 10, 7, gz + 16, 16, 'metal'); K.cyl(0, 4.2, 2.4, 0x9a968c, gx + 8 + i * 10, 15.2, gz + 16, 16, 'metal'); CW.circ(gx + 8 + i * 10, gz + 16, 4, 16); }
-      MAPB.push({ x: gx + 18, z: gz + 16, w: 30, d: 8, h: 14 });
-    } else {
-      K.cyl(1.4, 2.2, 32, 0xa0442e, gx + 15, 16, gz + 15, 12);
-      for (let i = 1; i < 4; i++) K.cyl(1.7 - i * 0.12, 1.7 - i * 0.12, 1.5, 0xf2efe6, gx + 15, 8 * i + 4, gz + 15, 12);
-      K.sph(0.3, 0xff3030, gx + 15, 32.3, gz + 15, 'glow');
-      CW.circ(gx + 15, gz + 15, 2.2, 32);
-      K.box(20, 6, 12, 0x8a8f94, gx + 15, 3, gz + 28, 'metal'); CW.box(gx + 5, gx + 25, gz + 22, gz + 34, 6);
-    }
-  }
-  WANDER.push({ x: cx, z: cz, r: Math.min(W, D) / 2 - 10 });
-}
-
-// ---------- Forêt ----------
-function forest() {
-  plate(220, 594, -594, -220, 0x335c2c, '#27492a');
-  // lac central
-  const lx = 330, lz = -330;
-  K.box(76, 0.1, 52, 0xb9a57a, lx, 0.04, lz); K.box(70, 0.14, 46, 0x2f7091, lx, 0.06, lz, 'glass');
-  CW.box(lx - 35, lx + 35, lz - 23, lz + 23, 1);
-  MAP_AREAS.push({ x0: lx - 35, x1: lx + 35, z0: lz - 23, z1: lz + 23, c: '#2f6784' });
-  K.box(3, 0.3, 14, 0x7a5436, lx, 0.5, lz + 29, 'wood');
-  // cabane
-  const hx = 520, hz = -520;
-  K.box(9, 3.6, 7, 0x6a4a30, hx, 1.8, hz, 'wood'); K.prism(10, 2.4, 8.4, 0x3d3a36, hx, 3.6, hz);
-  K.box(1.2, 2.1, 0.1, 0x3a2818, hx, 1.05, hz + 3.55); K.box(1, 0.9, 0.1, 0x2c3d4a, hx + 2.5, 2, hz + 3.55, 'glassLit');
-  CW.box(hx - 4.5, hx + 4.5, hz - 3.5, hz + 3.5, 6);
-  K.cyl(0.7, 0.9, 0.3, 0x555049, hx, 0.15, hz + 9, 8); K.sph(0.5, 0xff8a2a, hx, 0.5, hz + 9, 'glow', 1, 1.4, 1);
-  MAPB.push({ x: hx, z: hz, w: 9, d: 7, h: 6 });
-  let n = 0;
-  for (let i = 0; i < 900 && n < 470; i++) {
-    const x = wr(226, 590), z = wr(-590, -226);
-    if (roadDist(x, z) < 11) continue;
-    if (Math.abs(x - lx) < 42 && Math.abs(z - lz) < 30) continue;
-    if (Math.hypot(x - hx, z - hz) < 14) continue;
-    const r = wr(0, 1);
-    if (r < 0.6) treePine(x, z, wr(0.9, 1.6)); else if (r < 0.9) treeRound(x, z, wr(0.9, 1.5)); else rock(x, z, wr(0.7, 2));
-    if (wr(0, 1) < 0.25) bush(x + wr(-3, 3), z + wr(-3, 3), wr(0.7, 1.2));
-    n++;
-  }
-  HEAL_SPOTS.push({ x: hx - 6, z: hz + 8 });
-}
-
-// ---------- Aéroport ----------
-function airport() {
-  plate(-594, 220, -594, -447, 0x5f7a4c, null);
-  // piste
-  const rz = -556, rx0 = -570, rx1 = 190;
-  K.box(rx1 - rx0, 0.1, 34, 0x303236, (rx0 + rx1) / 2, 0.06, rz); hmRect(rx0, rx1, rz - 17, rz + 17, 0.1);
-  for (let x = rx0 + 30; x < rx1 - 30; x += 26) K.box(12, 0.02, 0.8, 0xf0ede4, x, 0.12, rz);
-  for (const ex of [rx0 + 8, rx1 - 8]) for (let i = -5; i <= 5; i++) if (i) K.box(10, 0.02, 1.2, 0xf0ede4, ex, 0.12, rz + i * 2.6);
-  K.box(rx1 - rx0 - 4, 0.02, 0.5, 0xf0ede4, (rx0 + rx1) / 2, 0.12, rz - 15.5); K.box(rx1 - rx0 - 4, 0.02, 0.5, 0xf0ede4, (rx0 + rx1) / 2, 0.12, rz + 15.5);
-  for (let x = rx0 + 4; x < rx1; x += 20) for (const s of [-1, 1]) K.box(0.4, 0.3, 0.4, s > 0 ? 0x9fd0ff : 0xfff3c0, x, 0.2, rz + s * 18, 'glow');
-  MAP_AREAS.push({ x0: rx0, x1: rx1, z0: rz - 17, z1: rz + 17, c: '#2b2d31' });
-  // tarmac + bretelles
-  K.box(410, 0.1, 70, 0x8e8d88, -45, 0.05, -490); hmRect(-250, 160, -525, -455, 0.1);
-  MAP_AREAS.push({ x0: -250, x1: 160, z0: -525, z1: -455, c: '#77766f' });
-  for (const tx of [-200, 120]) { K.box(18, 0.1, 18, 0x8e8d88, tx, 0.05, -532); hmRect(tx - 9, tx + 9, -541, -523, 0.1); }
-  // terminal
-  const t0 = -420, t1 = -270;
-  K.box(t1 - t0, 12, 36, 0x3b4c58, (t0 + t1) / 2, 6, -485, 'glassLit');
-  for (let x = t0; x <= t1; x += 10) K.box(0.8, 12, 37, 0xe8e4da, x, 6, -485);
-  K.box(t1 - t0 + 4, 1.2, 40, 0xe8e4da, (t0 + t1) / 2, 12.6, -485);
-  const ts = signMesh('Aéroport Saint-Bulle', 26, 3, '#e8e4da', '#1d4f9e', { upright: true }); ts.position.set((t0 + t1) / 2, 15, -466.9); world.add(ts);
-  CW.box(t0, t1, -503, -467, 13); MAPB.push({ x: (t0 + t1) / 2, z: -485, w: t1 - t0, d: 36, h: 12 });
-  K.box(t1 - t0, 0.08, 16, 0x3a3c40, (t0 + t1) / 2, 0.05, -457);
-  for (let i = 0; i < 6; i++) PARK_SPOTS.push({ x: t0 + 15 + i * 22, z: -457, heading: Math.PI / 2 });
-  // tour de contrôle
-  K.cyl(2.6, 3.4, 26, 0xd9d3c7, -160, 13, -478, 14); K.cyl(5, 4, 4, 0x2f4a5a, -160, 28, -478, 12, 'glassLit');
-  K.cyl(5.6, 5.6, 0.6, 0xe8e4da, -160, 30.3, -478, 12); K.sph(0.4, 0xff3030, -160, 32, -478, 'glow');
-  CW.circ(-160, -478, 3.4, 30); MAPB.push({ x: -160, z: -478, w: 8, d: 8, h: 30 });
-  // hangars
-  for (const hx of [40, 115]) {
-    K.box(62, 13, 44, 0xb7b2a3, hx, 6.5, -495, 'metal');
-    const roof = new THREE.Mesh(cylGeo(1, 20), M(0x8f8a7a, 'metal')); roof.scale.set(22, 44, 8); roof.rotation.x = Math.PI / 2; roof.position.set(hx, 13, -495); staticRoot.add(roof);
-    K.box(50, 11, 0.4, 0x2a2c2f, hx, 5.5, -472.8, 'metal');
-    CW.box(hx - 31, hx + 31, -517, -473, 20); MAPB.push({ x: hx, z: -495, w: 62, d: 44, h: 13 });
-  }
-  // avions
-  const plane = (x, z, ry, c) => {
-    const g = new THREE.Group(); const k = kit(g);
-    const f = k.cyl(1.6, 1.6, 26, c, 0, 2.8, 0, 14); f.rotation.x = Math.PI / 2;
-    const n = k.cyl(0, 1.6, 4, c, 0, 2.8, -15, 14); n.rotation.x = -Math.PI / 2;
-    const tl = k.cyl(0.4, 1.6, 5, c, 0, 3.1, 15.5, 14); tl.rotation.x = Math.PI / 2;
-    k.box(30, 0.35, 4.5, c, 0, 2.4, 1); k.box(10, 0.3, 2.4, c, 0, 3.4, 15.5);
-    k.box(0.35, 5, 3.4, 0x1d4f9e, 0, 5.4, 15.8); k.box(3.3, 0.9, 0.1, 0x1c2328, 0, 3.4, -13.7, 'glass');
-    for (const s of [-1, 1]) { const e = k.cyl(0.9, 0.9, 3.4, 0x8a8f94, s * 7, 1.6, 0, 12, 'metal'); e.rotation.x = Math.PI / 2; }
-    for (const [wx, wz] of [[0, -10], [-3, 3], [3, 3]]) k.cyl(0.5, 0.5, 0.4, 0x1a1a1a, wx, 0.5, wz, 10).rotation.z = Math.PI / 2;
-    g.position.set(x, 0, z); g.rotation.y = ry; staticRoot.add(g);
-    CW.circ(x, z, 3, 6); CW.circ(x + Math.sin(ry) * 10, z + Math.cos(ry) * 10, 2.5, 6); CW.circ(x - Math.sin(ry) * 10, z - Math.cos(ry) * 10, 2.5, 6);
-  };
-  plane(-60, -495, Math.PI / 2, 0xf2efe8); plane(-150, -505, Math.PI / 2 + 0.3, 0xe8e4da); plane(170, -556, -Math.PI / 2, 0xf2efe8);
-  // manche à air & clôture
-  K.cyl(0.07, 0.07, 6, 0xdddddd, -520, 3, -530, 6); const ws = K.cyl(0.25, 0.6, 2.5, 0xe4484c, -519, 5.8, -530, 8); ws.rotation.z = Math.PI / 2;
-  for (let x = -590; x < 215; x += 5) { if (Math.abs(x + 220) < 12) continue; K.box(0.12, 2.2, 0.12, 0x70757a, x, 1.1, -449, 'metal'); }
-  K.box(380, 0.06, 0.06, 0x70757a, -400, 1.9, -449, 'metal'); K.box(420, 0.06, 0.06, 0x70757a, 5, 1.9, -449, 'metal');
-  CW.box(-594, -234, -449.3, -448.7, 2.2); CW.box(-206, 216, -449.3, -448.7, 2.2);
-}
-
-// ---------- Plage ----------
-function beach() {
-  plate(447, 600, -220, 600, 0xe2c98b, '#b69d68'); plate(-227, 447, 447, 600, 0xe2c98b, '#b69d68');
-  slab(447, 453, -220, 440, 0xd9cdb2); slab(-227, 453, 447, 453, 0xd9cdb2);
-  for (let z = -210; z < 440; z += 20) palm(450, z, wr(0.9, 1.1));
-  for (let x = -215; x < 440; x += 22) palm(x, 450, wr(0.9, 1.1));
-  const TOWEL = [0xe4484c, 0x2f6ea5, 0xf2c230, 0x3f9a6a, 0xff7fb0, 0xffffff];
-  for (let i = 0; i < 46; i++) {
-    const x = i < 30 ? wr(470, 575) : wr(-200, 420), z = i < 30 ? wr(-200, 430) : wr(470, 575);
-    if (Math.abs(z - 118) < 12 && x > 560) continue;
-    K.cyl(0.05, 0.05, 2.5, 0xe8e4da, x, 1.25, z, 6);
-    K.cyl(0, 1.9, 0.8, wpick(TOWEL), x, 2.7, z, 10);
-    K.box(1.0, 0.03, 1.9, wpick(TOWEL), x + 1.2, 0.08, z + 0.4);
-    CW.circ(x, z, 0.2, 3);
-  }
-  for (const [x, z] of [[520, -120], [520, 200], [150, 520], [-120, 520]]) {
-    for (const s of [-1, 1]) for (const t of [-1, 1]) K.box(0.18, 3, 0.18, 0xf2efe6, x + s * 1.1, 1.5, z + t * 1.1, 'wood');
-    K.box(2.8, 2, 2.8, 0xe4484c, x, 4, z); K.cyl(0, 2.3, 1.2, 0xf2efe6, x, 5.6, z, 4);
-    const r = K.box(0.6, 0.1, 4, 0xf2efe6, x, 1.6, z + 2.8, 'wood'); r.rotation.x = 0.7;
-    CW.box(x - 1.3, x + 1.3, z - 1.3, z + 1.3, 6);
-  }
-  for (const s of [-1, 1]) K.cyl(0.08, 0.08, 2.5, 0xdddddd, 530 + s * 5, 1.25, 60, 6);
-  K.box(10, 1, 0.05, 0xf2efe6, 530, 2.1, 60);
-  // ponton
-  K.box(PIER.maxX - PIER.minX, 0.3, PIER.maxZ - PIER.minZ, 0x8a6a48, (PIER.minX + PIER.maxX) / 2, PIER.h - 0.15, (PIER.minZ + PIER.maxZ) / 2, 'wood');
-  for (let x = PIER.minX + 4; x < PIER.maxX; x += 8) for (const z of [PIER.minZ + 0.4, PIER.maxZ - 0.4]) { K.cyl(0.25, 0.25, 3, 0x5a4230, x, -0.8, z, 6); K.box(0.12, 1, 0.12, 0x5a4230, x, PIER.h + 0.5, z, 'wood'); }
-  K.box(PIER.maxX - PIER.minX, 0.1, 0.12, 0x5a4230, (PIER.minX + PIER.maxX) / 2, PIER.h + 1, PIER.minZ + 0.4, 'wood');
-  K.box(PIER.maxX - PIER.minX, 0.1, 0.12, 0x5a4230, (PIER.minX + PIER.maxX) / 2, PIER.h + 1, PIER.maxZ - 0.4, 'wood');
-  for (let x = 610; x < 690; x += 26) parkLamp(x, PIER.minZ + 1);
-  MAP_AREAS.push({ x0: PIER.minX, x1: PIER.maxX, z0: PIER.minZ, z1: PIER.maxZ, c: '#8a6a48' });
-  // bateaux
-  for (const [x, z, ry] of [[640, 140, 0.3], [660, 95, -0.4], [720, 160, 1.2], [612, -60, 0.1]]) {
-    const g = new THREE.Group(); const k = kit(g);
-    k.box(2.6, 1.2, 8, 0xf2efe8, 0, 0, 0); k.cyl(0, 1.3, 2.2, 0xf2efe8, 0, 0, -5, 4).rotation.x = -Math.PI / 2;
-    k.box(2, 1.2, 2.6, 0x2f6ea5, 0, 1.2, 1); k.box(2.62, 0.2, 8.02, 0x1d4f9e, 0, -0.3, 0);
-    g.position.set(x, -0.2, z); g.rotation.y = ry; staticRoot.add(g);
-  }
-  WANDER.push({ x: 520, z: 120, r: 60 }, { x: 520, z: -100, r: 60 }, { x: 100, z: 520, r: 60 }, { x: 350, z: 520, r: 60 });
-  HEAL_SPOTS.push({ x: 522, z: -114 });
-}
-
 // ---------- Routes (géométrie texturée) ----------
-function buildRoads() {
+function buildRoadsVisual() {
   const roadTex = canvasTex(256, 64, (ctx, w, h) => {
     ctx.fillStyle = '#2c2e32'; ctx.fillRect(0, 0, w, h);
     noiseFill(ctx, w, h, 2600, ['rgba(255,255,255,.05)', 'rgba(0,0,0,.2)', 'rgba(140,140,140,.06)'], 1, 2.5);
@@ -1526,41 +949,55 @@ function buildRoads() {
   }, true);
   const plainTex = canvasTex(64, 64, (ctx, w, h) => { ctx.fillStyle = '#2c2e32'; ctx.fillRect(0, 0, w, h); noiseFill(ctx, w, h, 300, ['rgba(255,255,255,.05)', 'rgba(0,0,0,.2)'], 1, 2); }, true);
   const strips = [], squares = [];
-  for (const L of LINES) {
-    const len = L.b - L.a, mid = (L.a + L.b) / 2;
-    strips.push(L.hz ? flatQuad(len, 14, mid, 0.08, L.c, 0, len / 24, 1) : flatQuad(len, 14, L.c, 0.08, mid, Math.PI / 2, len / 24, 1));
-    if (L.hz) hmRect(L.a - 7, L.b + 7, L.c - 7, L.c + 7, 0.08); else hmRect(L.c - 7, L.c + 7, L.a - 7, L.b + 7, 0.08);
+  for (const R of ROADS) {
+    for (let i = 0; i < R.pts.length - 1; i++) {
+      const A = R.pts[i], B = R.pts[i + 1], dx = B.x - A.x, dz = B.z - A.z, len = Math.hypot(dx, dz);
+      if (len < 0.01) continue;
+      const mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2;
+      strips.push(rotatedQuad(len, R.width, mx, 0.08, mz, Math.atan2(-dz, dx), len / 12, 1));
+      hmRect(Math.min(A.x, B.x) - R.width / 2 - 2, Math.max(A.x, B.x) + R.width / 2 + 2, Math.min(A.z, B.z) - R.width / 2 - 2, Math.max(A.z, B.z) + R.width / 2 + 2, 0.08);
+    }
   }
   for (const n of NODES) squares.push(flatQuad(14.02, 14.02, n.x, 0.085, n.z, 0));
-  const rm = new THREE.Mesh(mergeGeos(strips), new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.92 }));
-  const sm = new THREE.Mesh(mergeGeos(squares), new THREE.MeshStandardMaterial({ map: plainTex, roughness: 0.92 }));
-  rm.receiveShadow = sm.receiveShadow = true; world.add(rm, sm);
-  // passages piétons
+  if (strips.length) { const rm = new THREE.Mesh(mergeGeos(strips), new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.92 })); rm.receiveShadow = true; world.add(rm); }
+  if (squares.length) { const sm = new THREE.Mesh(mergeGeos(squares), new THREE.MeshStandardMaterial({ map: plainTex, roughness: 0.92 })); sm.receiveShadow = true; world.add(sm); }
+  // passages piétons (aux intersections d'au moins 3 routes)
   for (const n of NODES) {
-    const z = zoneOf(n.x, n.z);
-    if (!(z === 'downtown' || z === 'front') || n.adj.length < 3) continue;
+    if (n.adj.length < 3) continue;
     for (const m of n.adj) {
-      const dx = Math.sign(m.x - n.x), dz = Math.sign(m.z - n.z);
-      for (let i = -3; i <= 3; i++) {
-        if (dx) K.box(2.6, 0.02, 0.9, 0xeeeae0, n.x + dx * 10.5, 0.1, n.z + i * 1.8);
-        else K.box(0.9, 0.02, 2.6, 0xeeeae0, n.x + i * 1.8, 0.1, n.z + dz * 10.5);
+      const dx = m.x - n.x, dz = m.z - n.z, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+      const ux = dx / len, uz = dz / len, nx = -uz, nz = ux;
+      const cx = n.x + ux * 10.5, cz = n.z + uz * 10.5, ry = Math.atan2(-uz, ux);
+      for (let i = -3; i <= 3; i++) K.box(2.6, 0.02, 0.9, 0xeeeae0, cx + nx * i * 1.8, 0.1, cz + nz * i * 1.8, 'base', ry);
+    }
+  }
+  // lampadaires le long de chaque route
+  for (const R of ROADS) {
+    for (let i = 0; i < R.pts.length - 1; i++) {
+      const A = R.pts[i], B = R.pts[i + 1], dx = B.x - A.x, dz = B.z - A.z, len = Math.hypot(dx, dz);
+      if (len < 20) continue;
+      const ux = dx / len, uz = dz / len, nx = -uz, nz = ux;
+      let side = 1, k = 0;
+      for (let p = 16; p < len - 10; p += 36, k++) {
+        const x = A.x + ux * p + nx * side * 7.8, z = A.z + uz * p + nz * side * 7.8;
+        lampPost(x, z, -nx * side, -nz * side);
+        side = -side;
       }
     }
   }
-  // lampadaires
-  for (const L of LINES) {
-    let i = 0;
-    for (let p = L.a + 16; p < L.b - 10; p += 36, i++) {
-      if (L.nodes.some(q => Math.abs(q - p) < 13)) continue;
-      const x = L.hz ? p : L.c, z = L.hz ? L.c : p, zn = zoneOf(x, z);
-      if ((zn === 'forest' || zn === 'airport') && i % 2) continue;
-      const side = i % 2 ? 1 : -1;
-      if (L.hz) lampPost(p, L.c + side * 7.8, 0, -side); else lampPost(L.c + side * 7.8, p, -side, 0);
-    }
-  }
+}
+// quad orienté au sol : w = longueur dans la direction donnée par l'angle ry (radians), d = largeur perpendiculaire
+function rotatedQuad(w, d, x, y, z, ry, uScale = 1, vScale = 1) {
+  const g = new THREE.PlaneGeometry(d, w).toNonIndexed();
+  g.rotateX(-Math.PI / 2);
+  g.rotateY(ry);
+  g.translate(x, y, z);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * uScale, uv.getY(i) * vScale);
+  return g;
 }
 
-// ---------- Sol, eau, rivage ----------
+// ---------- Sol, eau ----------
 let waterMat = null;
 function buildGround() {
   const grass = canvasTex(512, 512, (ctx, w, h) => {
@@ -1571,8 +1008,6 @@ function buildGround() {
   grass.repeat.set(110, 110);
   const g = new THREE.Mesh(new THREE.BoxGeometry(1200, 8, 1200), new THREE.MeshStandardMaterial({ map: grass, roughness: 0.96 }));
   g.position.y = -4; g.receiveShadow = true; world.add(g);
-  const rim = new THREE.Mesh(new THREE.BoxGeometry(1226, 6, 1226), new THREE.MeshStandardMaterial({ color: C(0xd8bd82), roughness: 1 }));
-  rim.position.y = -3.3; world.add(rim);
   const nrm = canvasTex(256, 256, (ctx, w, h) => {
     const img = ctx.createImageData(w, h);
     const H = (x, y) => Math.sin(x * 0.098) * 0.6 + Math.sin(y * 0.147 + x * 0.05) * 0.5 + Math.sin((x + y) * 0.2) * 0.25 + Math.sin((x * 0.37 - y * 0.29)) * 0.15;
@@ -1602,35 +1037,24 @@ function buildLampFX() {
   lightPools.renderOrder = 2; world.add(lightPools);
 }
 
-// ---------- Construction complète ----------
-async function buildWorld(progress) {
-  buildGround(); progress(0.05, 'Terrassement…'); await tick();
-  const DT = [-220, -110, 0, 110, 220];
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) downtownBlock(DT[i] + 7, DT[i + 1] - 7, DT[j] + 7, DT[j + 1] - 7);
-  progress(0.18, 'Construction du centre-ville…'); await tick();
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
-    const x0 = MAJ[i] + 7, x1 = MAJ[i + 1] - 7, z0 = MAJ[j] + 7, z1 = MAJ[j + 1] - 7, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    if (Math.abs(cx) < 220 && Math.abs(cz) < 220) continue;
-    const zn = zoneOf(cx, cz);
-    if (zn === 'res') resBlock(x0, x1, z0, z1);
-    else if (zn === 'front') frontBlock(x0, x1, z0, z1);
-    else if (zn === 'park') parkBlock(x0, x1, z0, z1);
-    else if (zn === 'ind') indArea(x0, x1, z0, z1);
-  }
-  // bande résidentielle ouest
-  slab(-452, -447, -440, 220, 0xb7b2a8);
-  for (let z = -425; z < 210; z += 23) house(-452, z + wr(-2, 2), 'E');
-  for (let i = 0; i < 70; i++) { const x = wr(-590, -490), z = wr(-440, 220); (i % 2 ? treePine : treeRound)(x, z, wr(0.9, 1.4)); }
-  progress(0.4, 'Maisons et hôtels…'); await tick();
-  indArea(-594, -447, 227, 594); indArea(-440, -227, 447, 594);
-  // portique de quai
-  for (const s of [-1, 1]) for (const t of [-1, 1]) K.box(1, 22, 1, 0xd4a82a, -330 + s * 9, 11, 575 + t * 6, 'metal');
-  K.box(20, 2, 16, 0xd4a82a, -330, 22, 575, 'metal'); K.box(4, 3, 5, 0x3a3c40, -330, 20, 575);
-  CW.box(-340, -320, 568, 582, 4);
-  forest(); airport(); beach();
-  progress(0.6, 'Routes et lampadaires…'); await tick();
-  buildRoads(); buildLampFX();
-  progress(0.72, 'Optimisation de la géométrie…'); await tick();
+// ---------- Construction complète, entièrement pilotée par carte.json ----------
+async function buildWorldFromMap(map, progress) {
+  buildGround(); progress(0.1, 'Terrassement…'); await tick();
+  buildRoadGraph(map.roads || []);
+  for (const d of (map.doors || [])) DOORS.push({ name: d.name, interior: d.interior, blip: d.blip, x: d.x, z: d.z, outX: d.outX, outZ: d.outZ, kind: d.interior === 'garage' ? 'garage' : 'door' });
+  for (const p of (map.parking || [])) PARK_SPOTS.push({ x: p.x, z: p.z, heading: p.heading || 0, res: !!p.res });
+  for (const w2 of (map.pedSpawns || [])) WANDER.push({ x: w2.x, z: w2.z, r: w2.r || 30 });
+  (map.areas || []).forEach((a, i) => {
+    const id = a.id || ('zone' + i);
+    MAP_AREAS.push({ x0: a.x0, x1: a.x1, z0: a.z0, z1: a.z1, c: a.color || '#8a857a' });
+    ZONES_LIST.push({ id, name: a.name || id, sub: a.sub || '', x0: a.x0, x1: a.x1, z0: a.z0, z1: a.z1 });
+    ZONE_INFO[id] = { name: a.name || id, sub: a.sub || '' };
+  });
+  progress(0.3, 'Routes…'); await tick();
+  buildRoadsVisual(); buildLampFX();
+  progress(0.55, 'Bâtiments et décors…'); await tick();
+  placeCustomProps();
+  progress(0.75, 'Optimisation de la géométrie…'); await tick();
   mergeObject(staticRoot, { chunk: 150, target: world });
   staticRoot.clear();
   progress(0.85, 'Intérieurs…'); await tick();
@@ -2078,7 +1502,7 @@ const player = {
   ownedTops: [true, true, true, true, true, false, false, false],
   ownedBottoms: [true, true, true, true, false, false],
   ownedHair: [true, true, true, false, false, false],
-  packages: new Set(), day: 1, phase: 0, interior: null, door: null, hurtT: 0, lastHurt: 0
+  day: 1, phase: 0, interior: null, door: null, hurtT: 0, lastHurt: 0
 };
 let preview = null; // { slot: 'top'|'bottom'|'hair', idx } — essayage en cours, non payé
 function playerLook() {
@@ -2112,20 +1536,6 @@ function loadPersistedCustomModels() {
     for (const t in raw.vehicles) tasks.push(new Promise(r => { const buf = b64ToBuf(raw.vehicles[t]); loader.parse(buf, '', gltf => { gltf.scene.userData.srcBuf = buf; CUSTOM.vehicles[t] = gltf.scene; r(); }, () => r()); }));
     Promise.all(tasks).then(resolve);
   });
-}
-function downloadBlob(data, filename, mime) {
-  const blob = new Blob([data], { type: mime }), url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
-function exportGLB(object3D, filename) {
-  // GLTFExporter.parse(input, onDone, options) : pas de callback d'erreur séparé sur cette version
-  try {
-    new THREE.GLTFExporter().parse(object3D, result => {
-      const buf = result instanceof ArrayBuffer ? result : new TextEncoder().encode(JSON.stringify(result)).buffer;
-      downloadBlob(buf, filename, 'model/gltf-binary');
-    }, { binary: true });
-  } catch (e) { console.error(e); toast('Échec de l\'export'); }
 }
 function importGLB(file, onScene) {
   const reader = new FileReader();
@@ -2176,10 +1586,10 @@ function heal(n) { player.health = Math.min(100, player.health + n); }
 // ---------- Piétons ----------
 const peds = [], corpses = [];
 const MAX_PEDS = 42;
-const URBAN_EDGES = () => EDGES.filter(e => URBAN.has(zoneOf((e.a.x + e.b.x) / 2, (e.a.z + e.b.z) / 2)) && e.line.name !== 'Allée des Hangars');
+const URBAN_EDGES = () => EDGES.filter(e => e.urban);
 let _urbanEdges = null;
 function lanePoint(A, B, off, fromEnd, dist) {
-  const dx = Math.sign(B.x - A.x), dz = Math.sign(B.z - A.z), rx = -dz, rz = dx;
+  const len = Math.hypot(B.x - A.x, B.z - A.z) || 1, dx = (B.x - A.x) / len, dz = (B.z - A.z) / len, rx = -dz, rz = dx;
   const P = fromEnd ? B : A, s = fromEnd ? -dist : dist;
   return { x: P.x + dx * s + rx * off, z: P.z + dz * s + rz * off };
 }
@@ -2243,7 +1653,7 @@ function startParkedAsTraffic(v) {
   return true;
 }
 function pedNextEdge(p) {
-  const B = p.b, opts = B.adj.filter(n => n !== p.a && URBAN.has(zoneOf(n.x, n.z)));
+  const B = p.b, opts = B.adj.filter(n => n !== p.a && n.urban);
   const C = opts.length ? pick(opts) : p.a;
   p.targets.push(lanePoint(B, C, 9.6, false, 12)); p.targets.push(lanePoint(B, C, 9.6, true, 12));
   p.a = B; p.b = C;
@@ -2731,7 +2141,7 @@ function spawnTraffic(px, pz) {
   if (!_trafficEdges) _trafficEdges = EDGES.filter(e => e.len > 40);
   for (let i = 0; i < 10; i++) {
     const e = pick(_trafficEdges), fw = Math.random() < 0.5, A = fw ? e.a : e.b, B = fw ? e.b : e.a;
-    const t = rnd(0.25, 0.75), dx = Math.sign(B.x - A.x), dz = Math.sign(B.z - A.z);
+    const t = rnd(0.25, 0.75), elen = Math.hypot(B.x - A.x, B.z - A.z) || 1, dx = (B.x - A.x) / elen, dz = (B.z - A.z) / elen;
     const x = A.x + (B.x - A.x) * t - dz * 3.5, z = A.z + (B.z - A.z) * t + dx * 3.5;
     const d = Math.hypot(x - px, z - pz);
     if (d < 110 || d > 260) continue;
@@ -3106,7 +2516,7 @@ function knockedOut() {
   setTimeout(() => fade(() => {
     if (player.mode === 'drive') exitVehicle(true);
     if (player.interior) leaveInteriorRaw();
-    const d = DOORS.find(x => x.interior === 'hospital');
+    const d = DOORS.find(x => x.interior === 'hospital') || { x: (MAP && MAP.spawn ? MAP.spawn.x : 0), z: (MAP && MAP.spawn ? MAP.spawn.z : 0), outX: 0, outZ: 1 };
     player.x = d.x + d.outX * 2; player.z = d.z + d.outZ * 2; player.y = groundH(player.x, player.z);
     player.health = 100; player.downT = 0; player.drunk = 0;
     const lost = Math.min(player.money, Math.round(player.money * 0.1) + 50); addMoney(-lost);
@@ -3133,22 +2543,11 @@ function makePickup(kind, x, z) {
   const g = new THREE.Group(), k = kit(g);
   if (kind === 'heal') { k.box(0.7, 0.5, 0.45, 0xf2efe8, 0, 0, 0); k.box(0.36, 0.1, 0.47, 0xe4484c, 0, 0, 0, 'glow'); k.box(0.1, 0.36, 0.47, 0xe4484c, 0, 0, 0, 'glow'); }
   else if (kind === 'bat') { const b = k.cyl(0.05, 0.09, 1.1, 0xc8a06a, 0, 0, 0, 8, 'wood'); b.rotation.z = 1.2; }
-  else if (kind === 'package') { k.sph(0.45, 0xffd24a, 0, 0, 0, 'glow', 1, 1, 1, 14, 10); const r = k.cyl(0.75, 0.75, 0.06, 0xffe9a0, 0, 0, 0, 20, 'glow'); r.rotation.x = 1.2; }
   const m = mergeOne(g, WMAT.glow); m.castShadow = true;
   const y = groundH(x, z);
   m.position.set(x, y + 1, z); dyn.add(m);
   const p = { kind, x, z, y, m, t: rnd(0, 6), respawn: 0, active: true };
   pickups.push(p); return p;
-}
-const PACKAGE_SPOTS = [[-20, -95], [160, 150], [-330, -330], [110, -345], [-330, 95], [330, -300], [527, -512], [560, -400], [250, -570], [682, 118],
-  [565, 565], [-150, 570], [-565, 565], [-330, 560], [-520, -528], [180, -585], [-110, 330], [150, 290], [-575, -100], [395, -50]];
-function placePackages() {
-  PACKAGE_SPOTS.forEach(([x, z], i) => {
-    let px = x, pz = z;
-    for (let r = 0; r < 30 && (CW.blocked(px, 1, pz) || !walkable(px, pz)); r++) { const a = r * 2.4; px = x + Math.cos(a) * r * 1.5; pz = z + Math.sin(a) * r * 1.5; }
-    const p = makePickup('package', px, pz); p.id = i;
-    if (player.packages.has(i)) { p.active = false; p.m.visible = false; }
-  });
 }
 function updatePickups(dt) {
   const px = player.mode === 'drive' ? player.vehicle.x : player.x, pz = player.mode === 'drive' ? player.vehicle.z : player.z;
@@ -3161,19 +2560,10 @@ function updatePickups(dt) {
   for (const p of pickups) {
     if (!p.active) { if (p.respawn > 0) { p.respawn -= dt; if (p.respawn <= 0) { p.active = true; p.m.visible = true; } } continue; }
     p.t += dt; p.m.rotation.y = p.t * 1.8; p.m.position.y = p.y + 0.9 + Math.sin(p.t * 2.2) * 0.15;
-    if (p.kind === 'package' && Math.random() < dt * 6) FX.sparkle(p.x, p.m.position.y, p.z);
     const d = Math.hypot(p.x - px, p.z - pz);
-    if (d > (p.kind === 'package' ? rr + 0.4 : rr)) continue;
+    if (d > rr) continue;
     if (p.kind === 'heal') { if (player.health >= 100 || player.mode === 'drive') continue; heal(50); p.active = false; p.m.visible = false; p.respawn = 90; AU.buy(); toast('Trousse de soin : +50 santé'); }
     else if (p.kind === 'bat') { if (player.mode === 'drive') continue; giveWeapon('bat'); p.active = false; p.m.visible = false; p.respawn = player.weapons.bat ? 0 : 60; AU.buy(); showHelp(`Batte ramassée. ${kk('Clic')} pour frapper, ${kk('1')}${kk('2')}${kk('3')} ou la molette pour changer d'arme.`, 6); }
-    else if (p.kind === 'package') {
-      p.active = false; p.m.visible = false; player.packages.add(p.id); addMoney(250); AU.buy();
-      FX.explosion && FX.sparks(p.x, p.m.position.y, p.z, 30);
-      const n = player.packages.size;
-      bigMessage(`Bulle dorée ${n}/20`, n === 20 ? 'Toutes trouvées ! Prime de $5 000' : '+$250', '#ffd24a', 2.6);
-      if (n === 20) addMoney(5000);
-      saveGame();
-    }
   }
 }
 
@@ -3300,7 +2690,7 @@ function startTheftMission() {
   let node = null;
   for (let i = 0; i < 20; i++) {
     const n = pick(NODES), d = Math.hypot(n.x - player.x, n.z - player.z);
-    if (d > 70 && d < 320 && URBAN.has(zoneOf(n.x, n.z))) { node = n; break; }
+    if (d > 70 && d < 320 && n.urban) { node = n; break; }
   }
   if (!node) { toast('Aucune cible disponible pour le moment'); return; }
   const type = pick(THEFT_TYPES), color = pick(PAINT);
@@ -3318,7 +2708,7 @@ function updateTheftMission(dt) {
   if (m.timeLeft <= 0) { toast('Contrat manqué : temps écoulé'); if (m.marker) dyn.remove(m.marker); m.v.wanted = false; clearWaypoint(); theftMission = null; return; }
   if (m.phase === 'find' && player.mode === 'drive' && player.vehicle === m.v) {
     m.phase = 'deliver'; if (m.marker) { dyn.remove(m.marker); m.marker = null; }
-    const d = DOORS.find(x => x.kind === 'garage'); m.dropX = d.x; m.dropZ = d.z;
+    const d = DOORS.find(x => x.kind === 'garage') || (MAP && MAP.spawn) || { x: 0, z: 0 }; m.dropX = d.x; m.dropZ = d.z;
     setWaypoint(() => ({ x: m.dropX, z: m.dropZ }), 'Livrer au garage', 0x56a8e8);
     toast('Véhicule volé ! Direction le garage.');
   } else if (m.phase === 'deliver' && player.mode === 'drive' && player.vehicle === m.v) {
@@ -3745,16 +3135,15 @@ function buildMapCanvas() {
   x.fillStyle = '#c9ad74'; x.fillRect(W(-606), W(-606), 1212, 1212);
   x.fillStyle = '#34462f'; x.fillRect(W(-600), W(-600), 1200, 1200);
   for (const a of MAP_AREAS) { x.fillStyle = a.c; x.fillRect(W(a.x0), W(a.z0), a.x1 - a.x0, a.z1 - a.z0); }
-  x.fillStyle = '#5e6168';
-  for (const L of LINES) { /* trottoirs sous les routes */ }
   for (const b of MAPB) { x.fillStyle = b.h > 30 ? '#8a8f98' : '#6f747c'; x.fillRect(W(b.x - b.w / 2), W(b.z - b.d / 2), b.w, b.d); }
   x.strokeStyle = '#d9d3c4'; x.lineCap = 'square';
-  for (const L of LINES) {
-    x.lineWidth = L.name.startsWith('Rue') || L.name.startsWith('Allée') ? 9 : 12; x.beginPath();
-    if (L.hz) { x.moveTo(W(L.a), W(L.c)); x.lineTo(W(L.b), W(L.c)); } else { x.moveTo(W(L.c), W(L.a)); x.lineTo(W(L.c), W(L.b)); }
+  for (const R of ROADS) {
+    if (R.pts.length < 2) continue;
+    x.lineWidth = Math.max(6, R.width * 0.7); x.beginPath();
+    x.moveTo(W(R.pts[0].x), W(R.pts[0].z));
+    for (let i = 1; i < R.pts.length; i++) x.lineTo(W(R.pts[i].x), W(R.pts[i].z));
     x.stroke();
   }
-  x.fillStyle = '#2b2d31'; x.fillRect(W(-570), W(-573), 760, 34);
   mapCanvas = c;
 }
 function drawBlip(ctx, x, y, letter, col, r = 11) {
@@ -3875,7 +3264,7 @@ function updateHUD(dt) {
   if (state === 'play' && !fading) {
     if (P.mode === 'drive') {
       const d = DOORS.find(x => x.kind === 'garage'), f = DOORS.find(x => x.kind === 'fence');
-      if (Math.hypot(P.vehicle.x - d.x, P.vehicle.z - d.z) < 14) prompt = menu ? `${kk('E')} ou ${kk('G')} Fermer` : `${kk('G')} Garage : réparation et améliorations`;
+      if (d && Math.hypot(P.vehicle.x - d.x, P.vehicle.z - d.z) < 14) prompt = menu ? `${kk('E')} ou ${kk('G')} Fermer` : `${kk('G')} Garage : réparation et améliorations`;
       else if (f && Math.hypot(P.vehicle.x - f.x, P.vehicle.z - f.z) < 14) prompt = nearFence(P.vehicle) ? `${kk('E')} Revendre ce véhicule` : '';
     } else if (P.interior) {
       const I = P.interior;
@@ -3926,10 +3315,10 @@ function interact() {
 }
 
 // ---------- Sauvegarde ----------
-const SAVE_KEY = 'bulleDeRoute.save.v2';
+const SAVE_KEY = 'asphalteLibre.save.v2';
 function saveGame() {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ money: player.money, weapons: player.weapons, weapon: player.weapon, ammo: player.ammo, armor: player.armor, health: player.health, time: gameTime, day: player.day, packages: [...player.packages], top: player.top, bottom: player.bottom, hairIdx: player.hairIdx, ownedTops: player.ownedTops, ownedBottoms: player.ownedBottoms, ownedHair: player.ownedHair }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ money: player.money, weapons: player.weapons, weapon: player.weapon, ammo: player.ammo, armor: player.armor, health: player.health, time: gameTime, day: player.day, top: player.top, bottom: player.bottom, hairIdx: player.hairIdx, ownedTops: player.ownedTops, ownedBottoms: player.ownedBottoms, ownedHair: player.ownedHair }));
   } catch (e) { /* stockage indisponible */ }
 }
 function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
@@ -4019,7 +3408,7 @@ addEventListener('blur', () => { keys.clear(); mouseL = mouseR = false; });
 function pauseGame() {
   if (state !== 'play') return;
   state = 'pause'; keys.clear(); mouseL = mouseR = false; AU.horn(false);
-  $('stMoney').textContent = '$' + player.money.toLocaleString('fr-FR'); $('stPk').textContent = player.packages.size + ' / 20';
+  $('stMoney').textContent = '$' + player.money.toLocaleString('fr-FR');
   $('stDay').textContent = player.day; $('stHp').textContent = Math.round(player.health);
   drawBigMap(); $('pause').classList.add('show'); document.body.classList.remove('playing');
   if (AU.ctx) AU.ctx.suspend();
@@ -4035,12 +3424,6 @@ $('btnResume').onclick = resumeGame;
   const sel = $('vehTypeSelect');
   sel.innerHTML = Object.keys(VT).map(t => `<option value="${t}">${VT[t].name}${CUSTOM.vehicles[t] ? ' ★' : ''}</option>`).join('');
   const refreshSel = () => { for (const o of sel.options) o.textContent = VT[o.value].name + (CUSTOM.vehicles[o.value] ? ' ★' : ''); };
-  $('btnExportPlayer').onclick = () => exportGLB(player.h.root, 'personnage.glb');
-  $('btnExportVehicle').onclick = () => {
-    const type = sel.value;
-    if (player.mode === 'drive' && player.vehicle.type === type) { exportGLB(player.vehicle.g, `${type}.glb`); return; }
-    const v = makeVehicle(type, 0, 0, 0); exportGLB(v.g, `${type}.glb`); removeVehicle(v);
-  };
   $('fileImportPlayer').onchange = e => {
     const f = e.target.files[0]; if (!f) return;
     importGLB(f, scene => { CUSTOM.player = scene; buildPlayerModel(); saveCustomModels(); toast('Modèle du personnage importé'); AU.buy(); });
@@ -4138,19 +3521,25 @@ function frame() {
 }
 
 // ---------- Démarrage ----------
+function showMapMissingError() {
+  $('loadWrap').style.display = 'none';
+  $('tagline').innerHTML = "Aucune carte trouvée.<br><br>Ce jeu n'a plus de génération procédurale : construis ta carte avec <code>editeur_carte_3d.html</code> (bâtiments/décors via <code>editeur_batiments_3d.html</code> et <code>editeur_decors_3d.html</code>), exporte <code>carte.json</code> à côté du jeu, lance <code>serveur.py</code>, puis recharge cette page.";
+}
 async function boot() {
   const bar = $('loadBar').firstChild, txt = $('loadText');
   const progress = (p, t) => { bar.style.width = Math.round(p * 100) + '%'; txt.textContent = t; };
   try { await Promise.race([document.fonts.load('italic 800 40px "Barlow Condensed"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
   requestAnimationFrame(frame);
   progress(0.02, 'Modèles personnalisés…'); await loadPersistedCustomModels();
-  await buildWorld(progress);
+  const map = await loadMap();
+  if (!map) { showMapMissingError(); return; }
+  MAP = map;
+  await buildWorldFromMap(map, progress);
   buildInteriors(); buildInteriorEnv();
   progress(0.9, 'Circulation et habitants…'); await tick();
   spawnInitialVehicles();
   setupMarkers();
-  for (const s of HEAL_SPOTS) makePickup('heal', s.x, s.z);
-  makePickup('bat', -46, -40);
+  for (const pk of (map.pickups || [])) makePickup(pk.kind, pk.x, pk.z);
   buildMapCanvas();
   buildPlayerModel(); player.h.root.visible = false;
   for (let i = 0; i < 25; i++) spawnPed(-20, -20);
@@ -4164,11 +3553,16 @@ async function boot() {
   $('loadWrap').style.display = 'none'; $('menuBtns').style.display = 'flex';
   const save = loadSave();
   if (save) { $('btnContinue').style.display = 'inline-block'; }
-  $('btnNew').onclick = () => startGame(null);
-  $('btnContinue').onclick = () => startGame(save);
+  $('btnNew').onclick = e => { e.currentTarget.blur(); startGame(null); };
+  $('btnContinue').onclick = e => { e.currentTarget.blur(); startGame(save); };
   if ('ontouchstart' in window && !matchMedia('(pointer:fine)').matches) $('touchNote').style.display = 'block';
 }
+// les boutons du menu-titre restent dans le DOM une fois masqués (juste opacity:0 + pointer-events:none) ;
+// s'ils gardaient le focus clavier, une touche qui « clique » un bouton focalisé (Entrée…) pouvait
+// relancer startGame() en pleine partie et donner l'impression que le jeu réinitialise les PNJ /
+// rejoue le bandeau noir d'intro sans raison. Le blur() ci-dessus + ce garde-fou couvrent les deux angles.
 function startGame(save) {
+  if (state === 'play') return;
   AU.init();
   if (save) {
     Object.assign(player, { money: save.money, ammo: save.ammo || 0, armor: save.armor || 0, health: save.health || 100, day: save.day || 1 });
@@ -4178,16 +3572,19 @@ function startGame(save) {
     player.top = save.top || 0; player.bottom = save.bottom || 0; player.hairIdx = save.hairIdx || 0;
     player.weapons = Object.assign({ fists: true, bat: false, pistol: false }, save.weapons);
     player.weapon = player.weapons[save.weapon] ? save.weapon : 'fists';
-    player.packages = new Set(save.packages || []);
     gameTime = save.time || 17.4;
     buildPlayerModel();
   } else { gameTime = 17.4; }
-  placePackages();
-  const flat = DOORS.find(d => d.interior === 'flat');
-  if (save) { player.x = flat.x + flat.outX * 2; player.z = flat.z + flat.outZ * 2; }
-  else { player.x = -55; player.z = -22; }
-  player.y = groundH(player.x, player.z); player.facing = save ? Math.atan2(flat.outX, flat.outZ) : Math.PI;
-  cam.yaw = save ? Math.atan2(-flat.outX, -flat.outZ) : 0; cam.pitch = -0.12;
+  // point de départ : la Planque (porte interior:'flat') si la carte en a une, sinon le spawn défini
+  // dans l'éditeur de carte, sinon l'origine — dans cet ordre pour privilégier "rentrer chez soi" à la reprise
+  const flat = DOORS.find(d => d.interior === 'flat'), spawn = MAP && MAP.spawn;
+  if (flat) {
+    player.x = flat.x + flat.outX * 2; player.z = flat.z + flat.outZ * 2;
+    player.facing = Math.atan2(flat.outX, flat.outZ); cam.yaw = Math.atan2(-flat.outX, -flat.outZ);
+  } else if (spawn) {
+    player.x = spawn.x; player.z = spawn.z; player.facing = spawn.facing || 0; cam.yaw = spawn.facing || 0;
+  } else { player.x = 0; player.z = 0; player.facing = Math.PI; cam.yaw = 0; }
+  player.y = groundH(player.x, player.z); cam.pitch = -0.12;
   player.h.root.visible = true;
   clearPeds(); for (let i = 0; i < 30; i++) spawnPed(player.x, player.z);
   if (player.weapons.bat) { const b = pickups.find(p => p.kind === 'bat'); if (b) { b.active = false; b.m.visible = false; } }

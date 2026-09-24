@@ -1,0 +1,30 @@
+{
+ "name": "Poubelle",
+ "kind": "decor",
+ "parts": [
+  {
+   "prim": "cyl",
+   "rt": 0.3,
+   "rb": 0.26,
+   "h": 0.9,
+   "seg": 10,
+   "color": "#355a3a",
+   "x": 0,
+   "y": 0.45,
+   "z": 0,
+   "cat": "metal"
+  },
+  {
+   "prim": "cyl",
+   "rt": 0.32,
+   "rb": 0.32,
+   "h": 0.06,
+   "seg": 10,
+   "color": "#233d27",
+   "x": 0,
+   "y": 0.92,
+   "z": 0,
+   "cat": "metal"
+  }
+ ]
+}

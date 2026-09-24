@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Éditeur de décors 3D — Asphalte Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#15171a; --panel:#1d2024; --line:#2b2f34; --text:#f1efe8; --muted:#9a978d; --accent:#f2c230; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--text); font-family:'Barlow',sans-serif; overflow:hidden; }
+  #app{ display:flex; height:100%; }
+  #viewport{ flex:1; position:relative; }
+  #viewport canvas{ display:block; width:100%; height:100%; }
+  #hint{ position:absolute; left:16px; bottom:12px; font-size:12px; color:#cfcabd; background:rgba(15,17,19,.55); padding:4px 9px; border-radius:5px; pointer-events:none; }
+  #toolbar{ position:absolute; left:16px; top:14px; display:flex; gap:6px; flex-wrap:wrap; max-width:70%; }
+  #toolbar button{ background:rgba(15,17,19,.75); color:var(--text); border:1px solid var(--line); }
+  #panelL{ width:220px; background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; padding:14px; }
+  #panelR{ width:300px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:16px; }
+  h1{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-style:italic; font-size:22px; margin:0 0 10px; }
+  h1 span{ color:var(--accent); }
+  fieldset{ border:1px solid var(--line); border-radius:8px; margin:0 0 12px; padding:9px 11px 12px; }
+  legend{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:13px; color:var(--accent); padding:0 6px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  select, input[type=number], input[type=text], input[type=color]{ background:#0f1113; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:5px 7px; width:100%; font:inherit; }
+  .row{ display:flex; gap:6px; }
+  .row > *{ flex:1; }
+  button{ font:inherit; cursor:pointer; border:0; border-radius:6px; padding:7px 10px; font-weight:700; font-size:12.5px; }
+  .btn-main{ background:var(--accent); color:#141414; width:100%; margin-top:6px; }
+  .btn-ghost{ background:transparent; color:var(--text); box-shadow:inset 0 0 0 1.5px var(--line); width:100%; margin-top:6px; }
+  .btn-danger{ background:#7a2a2a; color:#fff; width:100%; margin-top:8px; }
+  .partItem{ display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-radius:5px; font-size:12.5px; cursor:pointer; margin-bottom:2px; }
+  .partItem:hover{ background:#26292e; }
+  .partItem.sel{ background:#2a2410; outline:1px solid var(--accent); }
+  .partItem small{ color:var(--muted); }
+  #status{ font-size:12px; color:var(--muted); margin-top:8px; min-height:16px; }
+  #status.ok{ color:#9ee08a; }
+  .empty{ font-size:12.5px; color:var(--muted); padding:10px 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="panelL">
+    <h1>Pièces</h1>
+    <label>Nom du décor</label>
+    <input type="text" id="modelName" value="Nouveau décor">
+    <div id="partList" style="margin-top:12px"></div>
+  </div>
+  <div id="viewport">
+    <div id="toolbar">
+      <button id="addBox">+ Bloc</button>
+      <button id="addCyl">+ Cylindre</button>
+      <button id="addSph">+ Sphère</button>
+      <button id="addPrism">+ Toit (prisme)</button>
+    </div>
+    <div id="hint">Glisser : orbiter · molette : zoom · clic droit : panoramique · clic gauche sur une pièce : sélectionner</div>
+  </div>
+  <div id="panelR">
+    <fieldset id="fProps" style="display:none">
+      <legend>Pièce sélectionnée</legend>
+      <label>Type</label>
+      <input type="text" id="pType" disabled>
+      <div class="row">
+        <div><label>X</label><input type="number" id="pX" step="0.1"></div>
+        <div><label>Y</label><input type="number" id="pY" step="0.1"></div>
+        <div><label>Z</label><input type="number" id="pZ" step="0.1"></div>
+      </div>
+      <div id="sizeFields"></div>
+      <label>Couleur</label>
+      <input type="color" id="pColor" value="#c9c2b4">
+      <label>Matériau</label>
+      <select id="pCat">
+        <option value="base">Mur / béton</option>
+        <option value="metal">Métal</option>
+        <option value="glass">Vitre</option>
+        <option value="glassLit">Vitre éclairée</option>
+        <option value="glow">Néon / lumineux</option>
+        <option value="wood">Bois</option>
+        <option value="water">Eau</option>
+      </select>
+      <button class="btn-ghost" id="btnDup">Dupliquer</button>
+      <button class="btn-danger" id="btnDel">Supprimer la pièce</button>
+    </fieldset>
+    <fieldset id="fEmpty"><div class="empty">Ajoute une pièce avec la barre d'outils, ou clique une pièce existante pour l'éditer.</div></fieldset>
+
+    <fieldset>
+      <legend>Fichier</legend>
+      <button class="btn-main" id="btnSave">Exporter le modèle (.json)</button>
+      <label style="margin-top:8px">Importer un modèle existant (voir <code>modeles/decors/</code>)</label>
+      <input type="file" id="fileLoad" accept=".json">
+      <button class="btn-ghost" id="btnNew">Nouveau modèle</button>
+      <div id="status"></div>
+    </fieldset>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+// ---------- Rendu ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+$('viewport').appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x223038);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x33422a, 0.95));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(20, 30, 15); scene.add(sun);
+scene.add(new THREE.GridHelper(20, 20, 0x445055, 0x2a3338));
+
+function resize() { const r = $('viewport').getBoundingClientRect(); renderer.setSize(r.width, r.height); camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize);
+
+let camYaw = 0.7, camPitch = 0.4, camDist = 8, camTarget = new THREE.Vector3(0, 1, 0);
+let dragging = null, lastX = 0, lastY = 0, moved = false;
+renderer.domElement.addEventListener('pointerdown', e => { dragging = e.button === 2 ? 'pan' : 'rot'; lastX = e.clientX; lastY = e.clientY; moved = false; });
+addEventListener('pointerup', e => { if (dragging === 'rot' && !moved) onClickScene(e); dragging = null; });
+addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+  if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+  if (dragging === 'rot') { camYaw -= dx * 0.008; camPitch = Math.max(-1.3, Math.min(1.3, camPitch - dy * 0.008)); }
+  else { const s = camDist * 0.0018; camTarget.x -= Math.cos(camYaw) * dx * s; camTarget.z -= Math.sin(camYaw) * dx * s; camTarget.y += dy * s; }
+});
+renderer.domElement.addEventListener('wheel', e => { camDist = Math.max(2, Math.min(200, camDist * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+function updateCam() {
+  const cp = Math.cos(camPitch);
+  camera.position.set(camTarget.x + Math.cos(camYaw) * cp * camDist, camTarget.y + Math.sin(camPitch) * camDist, camTarget.z + Math.sin(camYaw) * cp * camDist);
+  camera.lookAt(camTarget);
+}
+
+// ---------- Primitives (mêmes conventions que le jeu) ----------
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const PRISM = (() => {
+  const a = -0.5, b = 0.5, v = [[a, 0, -0.5], [a, 0, 0.5], [a, 1, 0], [b, 0, -0.5], [b, 0, 0.5], [b, 1, 0]];
+  const tris = [[0, 1, 2], [3, 5, 4], [0, 5, 3], [0, 2, 5], [1, 5, 2], [1, 4, 5], [0, 4, 1], [0, 3, 4]];
+  const pos = []; for (const t of tris) for (const i of t) pos.push(...v[i]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+})();
+function cylGeo(seg) { return new THREE.CylinderGeometry(1, 1, 1, seg); }
+function matFor(color, cat) {
+  const lit = cat === 'glassLit', isGlass = cat === 'glass' || lit, m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: isGlass ? 0.12 : (cat === 'wood' ? 0.7 : 0.85), metalness: isGlass ? 0.5 : (cat === 'metal' ? 0.6 : 0) });
+  if (lit || cat === 'glow') { m.emissive = new THREE.Color(cat === 'glow' ? color : 0xffc06a); m.emissiveIntensity = 0.55; }
+  return m;
+}
+
+// ---------- Modèle en cours d'édition ----------
+let parts = [], nextId = 1, selected = -1;
+function defaultPart(prim) {
+  const base = { id: nextId++, prim, color: '#c9c2b4', cat: 'base', x: 0, y: 1, z: 0 };
+  if (prim === 'box') return Object.assign(base, { w: 2, h: 2, d: 2, ry: 0 });
+  if (prim === 'cyl') return Object.assign(base, { rt: 0.5, rb: 0.5, h: 1.5, seg: 12 });
+  if (prim === 'sph') return Object.assign(base, { r: 0.6, sx: 1, sy: 1, sz: 1 });
+  if (prim === 'prism') return Object.assign(base, { len: 3, h: 1.6, depth: 3, ry: 0, color: '#7a3b2e' });
+}
+function meshFromPart(p) {
+  const color = parseInt(p.color.replace('#', ''), 16), cat = p.cat || 'base';
+  let m;
+  if (p.prim === 'cyl') { m = new THREE.Mesh(cylGeo(p.seg || 12), matFor(color, cat)); m.scale.set(p.rt, p.h, p.rt); }
+  else if (p.prim === 'sph') { m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), matFor(color, cat)); m.scale.set(p.r * p.sx, p.r * p.sy, p.r * p.sz); }
+  else if (p.prim === 'prism') { m = new THREE.Mesh(PRISM, matFor(color, cat)); m.scale.set(p.len, p.h, p.depth); m.rotation.y = p.ry || 0; }
+  else { m = new THREE.Mesh(UNIT_BOX, matFor(color, cat)); m.scale.set(p.w, p.h, p.d); m.rotation.y = p.ry || 0; }
+  m.position.set(p.x, p.y, p.z); m.userData.partId = p.id;
+  return m;
+}
+const modelGroup = new THREE.Group(); scene.add(modelGroup);
+function rebuildScene() {
+  modelGroup.clear();
+  for (const p of parts) modelGroup.add(meshFromPart(p));
+}
+function addPart(prim) { const p = defaultPart(prim); parts.push(p); rebuildScene(); renderPartList(); selectPart(parts.length - 1); }
+
+function renderPartList() {
+  const box = $('partList'); box.innerHTML = '';
+  const names = { box: 'Bloc', cyl: 'Cylindre', sph: 'Sphère', prism: 'Toit' };
+  parts.forEach((p, i) => {
+    const d = document.createElement('div');
+    d.className = 'partItem' + (i === selected ? ' sel' : '');
+    d.innerHTML = `<span>${names[p.prim]} #${p.id}</span><small>${p.cat}</small>`;
+    d.onclick = () => selectPart(i);
+    box.appendChild(d);
+  });
+  if (!parts.length) box.innerHTML = '<div class="empty">Aucune pièce.</div>';
+}
+
+function sizeFieldsFor(p) {
+  const f = $('sizeFields');
+  if (p.prim === 'box') f.innerHTML = `
+    <div class="row"><div><label>Largeur</label><input type="number" id="sW" step="0.1" value="${p.w}"></div>
+    <div><label>Hauteur</label><input type="number" id="sH" step="0.1" value="${p.h}"></div>
+    <div><label>Profondeur</label><input type="number" id="sD" step="0.1" value="${p.d}"></div></div>
+    <label>Rotation Y (°)</label><input type="number" id="sRy" step="1" value="${Math.round((p.ry || 0) * 180 / Math.PI)}">`;
+  else if (p.prim === 'cyl') f.innerHTML = `
+    <div class="row"><div><label>Rayon haut</label><input type="number" id="sRt" step="0.05" value="${p.rt}"></div>
+    <div><label>Rayon bas</label><input type="number" id="sRb" step="0.05" value="${p.rb}"></div></div>
+    <div class="row"><div><label>Hauteur</label><input type="number" id="sH" step="0.1" value="${p.h}"></div>
+    <div><label>Segments</label><input type="number" id="sSeg" step="1" value="${p.seg}"></div></div>`;
+  else if (p.prim === 'sph') f.innerHTML = `
+    <label>Rayon</label><input type="number" id="sR" step="0.05" value="${p.r}">
+    <div class="row"><div><label>Éch. X</label><input type="number" id="sSx" step="0.1" value="${p.sx}"></div>
+    <div><label>Éch. Y</label><input type="number" id="sSy" step="0.1" value="${p.sy}"></div>
+    <div><label>Éch. Z</label><input type="number" id="sSz" step="0.1" value="${p.sz}"></div></div>`;
+  else if (p.prim === 'prism') f.innerHTML = `
+    <div class="row"><div><label>Longueur</label><input type="number" id="sLen" step="0.1" value="${p.len}"></div>
+    <div><label>Hauteur</label><input type="number" id="sH" step="0.1" value="${p.h}"></div>
+    <div><label>Profondeur</label><input type="number" id="sD" step="0.1" value="${p.depth}"></div></div>
+    <label>Rotation Y (°)</label><input type="number" id="sRy" step="1" value="${Math.round((p.ry || 0) * 180 / Math.PI)}">`;
+  for (const el of f.querySelectorAll('input')) el.oninput = () => applySizeFields(p);
+}
+function applySizeFields(p) {
+  const v = id => +$(id).value;
+  if (p.prim === 'box') { p.w = v('sW'); p.h = v('sH'); p.d = v('sD'); p.ry = v('sRy') * Math.PI / 180; }
+  else if (p.prim === 'cyl') { p.rt = v('sRt'); p.rb = v('sRb'); p.h = v('sH'); p.seg = Math.max(3, v('sSeg')); }
+  else if (p.prim === 'sph') { p.r = v('sR'); p.sx = v('sSx'); p.sy = v('sSy'); p.sz = v('sSz'); }
+  else if (p.prim === 'prism') { p.len = v('sLen'); p.h = v('sH'); p.depth = v('sD'); p.ry = v('sRy') * Math.PI / 180; }
+  rebuildScene();
+}
+
+function selectPart(i) {
+  selected = i; renderPartList();
+  $('fProps').style.display = i >= 0 ? 'block' : 'none';
+  $('fEmpty').style.display = i >= 0 ? 'none' : 'block';
+  if (i < 0) return;
+  const p = parts[i];
+  $('pType').value = p.prim; $('pX').value = p.x; $('pY').value = p.y; $('pZ').value = p.z;
+  $('pColor').value = p.color; $('pCat').value = p.cat;
+  sizeFieldsFor(p);
+}
+for (const [id, key] of [['pX', 'x'], ['pY', 'y'], ['pZ', 'z']]) $(id).oninput = () => { if (selected < 0) return; parts[selected][key] = +$(id).value; rebuildScene(); };
+$('pColor').oninput = () => { if (selected < 0) return; parts[selected].color = $('pColor').value; rebuildScene(); };
+$('pCat').oninput = () => { if (selected < 0) return; parts[selected].cat = $('pCat').value; rebuildScene(); };
+$('btnDup').onclick = () => { if (selected < 0) return; const c = Object.assign({}, parts[selected], { id: nextId++, x: parts[selected].x + 0.6, z: parts[selected].z + 0.6 }); parts.push(c); rebuildScene(); renderPartList(); selectPart(parts.length - 1); };
+$('btnDel').onclick = () => { if (selected < 0) return; parts.splice(selected, 1); rebuildScene(); renderPartList(); selectPart(-1); };
+
+$('addBox').onclick = () => addPart('box');
+$('addCyl').onclick = () => addPart('cyl');
+$('addSph').onclick = () => addPart('sph');
+$('addPrism').onclick = () => addPart('prism');
+
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function onClickScene(e) {
+  const r = $('viewport').getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObjects(modelGroup.children)[0];
+  if (hit) { const idx = parts.findIndex(p => p.id === hit.object.userData.partId); if (idx >= 0) selectPart(idx); }
+}
+
+// ---------- Fichier ----------
+function setStatus(msg, ok) { const s = $('status'); s.textContent = msg; s.className = ok ? 'ok' : ''; }
+$('btnSave').onclick = () => {
+  const data = { name: $('modelName').value || 'Décor', kind: 'decor', parts: parts.map(({ id, ...rest }) => rest) };
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = (data.name || 'decor').toLowerCase().replace(/[^a-z0-9]+/g, '_') + '.json'; a.click();
+  setStatus('Modèle exporté.', true);
+};
+function loadModel(j, label) {
+  if (!Array.isArray(j.parts)) throw new Error('format invalide (pas de "parts")');
+  parts = j.parts.map(p => Object.assign({ id: nextId++ }, p));
+  $('modelName').value = j.name || 'Décor';
+  rebuildScene(); renderPartList(); selectPart(-1);
+  setStatus((label || 'Modèle importé') + ' (' + parts.length + ' pièces).', true);
+}
+$('fileLoad').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { loadModel(JSON.parse(await f.text())); }
+  catch (err) { setStatus('Import impossible : ' + err.message, false); }
+  e.target.value = '';
+};
+$('btnNew').onclick = () => { parts = []; nextId = 1; $('modelName').value = 'Nouveau décor'; rebuildScene(); renderPartList(); selectPart(-1); setStatus('Nouveau modèle.', true); };
+
+// modèle de départ (tronc + feuillage), sauf si on nous demande d'en ouvrir un
+// (venant du gestionnaire de modèles : editeur_decors_3d.html?open=modeles/decors/xxx.json)
+const openParam = new URLSearchParams(location.search).get('open');
+if (openParam) {
+  fetch(openParam).then(r => r.json()).then(j => loadModel(j, 'Modèle ouvert')).catch(err => {
+    setStatus('Impossible d\'ouvrir ' + openParam + ' : ' + err.message, false);
+    addPart('cyl'); Object.assign(parts[0], { rt: 0.18, rb: 0.22, h: 1.4, y: 0.7, color: '#6a4a30', cat: 'wood' });
+    addPart('sph'); Object.assign(parts[1], { r: 1.1, y: 1.9, color: '#3d6e35', sx: 1, sy: 0.9, sz: 1 });
+    rebuildScene(); selectPart(0); renderPartList();
+  });
+} else {
+  addPart('cyl'); Object.assign(parts[0], { rt: 0.18, rb: 0.22, h: 1.4, y: 0.7, color: '#6a4a30', cat: 'wood' });
+  addPart('sph'); Object.assign(parts[1], { r: 1.1, y: 1.9, color: '#3d6e35', sx: 1, sy: 0.9, sz: 1 });
+  rebuildScene(); selectPart(0);
+  renderPartList();
+}
+resize();
+(function loop() { updateCam(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

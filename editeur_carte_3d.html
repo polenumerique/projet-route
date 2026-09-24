@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Éditeur de carte 3D — Asphalte Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#15171a; --panel:#1d2024; --line:#2b2f34; --text:#f1efe8; --muted:#9a978d; --accent:#f2c230; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--text); font-family:'Barlow',sans-serif; overflow:hidden; }
+  #app{ display:flex; height:100%; }
+  #viewport{ flex:1; position:relative; }
+  #viewport canvas{ display:block; width:100%; height:100%; }
+  #hint{ position:absolute; left:16px; bottom:12px; font-size:12px; color:#cfcabd; background:rgba(15,17,19,.55); padding:4px 9px; border-radius:5px; pointer-events:none; max-width:60%; }
+  #modeBar{ position:absolute; left:16px; top:14px; display:flex; gap:6px; flex-wrap:wrap; max-width:75%; }
+  #modeBar button{ background:rgba(15,17,19,.7); color:var(--text); border:1px solid var(--line); font-size:12.5px; }
+  #modeBar button.active{ background:var(--accent); color:#141414; border-color:var(--accent); }
+  #panel{ width:360px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:16px 16px 40px; }
+  h1{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-style:italic; font-size:24px; margin:0 0 2px; }
+  h1 span{ color:var(--accent); }
+  .sub{ font-size:12px; color:var(--muted); margin-bottom:14px; line-height:1.45; }
+  fieldset{ border:1px solid var(--line); border-radius:8px; margin:0 0 12px; padding:9px 11px 12px; }
+  legend{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:13px; color:var(--accent); padding:0 6px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  select, input[type=number], input[type=text]{ background:#0f1113; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:5px 7px; width:100%; font:inherit; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .row{ display:flex; gap:6px; }
+  .row > *{ flex:1; }
+  button{ font:inherit; cursor:pointer; border:0; border-radius:6px; padding:8px 12px; font-weight:700; }
+  .btn-main{ background:var(--accent); color:#141414; width:100%; margin-top:6px; }
+  .btn-ghost{ background:transparent; color:var(--text); box-shadow:inset 0 0 0 1.5px var(--line); width:100%; margin-top:6px; }
+  .btn-danger{ background:#7a2a2a; color:#fff; }
+  .btn-main:hover, .btn-ghost:hover{ filter:brightness(1.08); }
+  .listItem{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:5px; font-size:12.5px; cursor:pointer; border:1px solid transparent; }
+  .listItem:hover{ background:#26292e; }
+  .listItem.sel{ border-color:var(--accent); background:#2a2410; }
+  .listItem small{ color:var(--muted); display:block; }
+  .listItem button{ padding:3px 8px; font-size:11px; }
+  #status{ font-size:12px; color:var(--muted); margin-top:8px; min-height:16px; }
+  #status.ok{ color:#9ee08a; }
+  .valline{ display:flex; justify-content:space-between; font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="viewport">
+    <div id="modeBar">
+      <button id="mode-spawn" class="active">Départ</button>
+      <button id="mode-routes">Routes</button>
+      <button id="mode-doors">Portes</button>
+      <button id="mode-parking">Parkings</button>
+      <button id="mode-peds">Piétons</button>
+      <button id="mode-props">Objets</button>
+    </div>
+    <div id="hint"></div>
+  </div>
+  <div id="panel">
+    <h1>Éditeur de <span>carte 3D</span></h1>
+    <div class="sub">Toute la carte du jeu vient d'ici : plus de génération procédurale. Place le point de départ, dessine les routes, les portes (magasins, planque, hôpital, garage…), les places de parking, les zones où les piétons flânent, puis tes bâtiments/décors. Exporte <code>carte.json</code> à côté du jeu.</div>
+
+    <fieldset id="panel-spawn">
+      <legend>Point de départ du joueur</legend>
+      <p class="sub" style="margin:0 0 8px">Clique sur le sol pour placer (ou déplacer) le point de départ.</p>
+      <div class="row"><div><label>X</label><input type="number" id="spX" step="1"></div><div><label>Z</label><input type="number" id="spZ" step="1"></div></div>
+      <label>Orientation</label><input type="range" id="spFacing" min="0" max="360" value="0">
+    </fieldset>
+
+    <fieldset id="panel-routes" style="display:none">
+      <legend>Routes</legend>
+      <p class="sub" style="margin:0 0 8px">Clique sur le sol pour ajouter des points à la route en cours. « Nouvelle route » en démarre une autre.</p>
+      <label>Largeur</label><input type="range" id="roadWidth" min="4" max="30" value="12">
+      <div class="row"><input type="checkbox" id="roadUrban" checked style="width:auto;flex:0"><label style="margin:0" for="roadUrban">Route urbaine (piétons/trafic)</label></div>
+      <button class="btn-main" id="btnNewRoad">Nouvelle route</button>
+      <button class="btn-ghost" id="btnUndoPoint">Annuler le dernier point</button>
+      <div id="roadList" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+    </fieldset>
+
+    <fieldset id="panel-doors" style="display:none">
+      <legend>Portes</legend>
+      <p class="sub" style="margin:0 0 8px">Configure puis clique sur le sol pour placer une porte.</p>
+      <label>Type</label>
+      <select id="doorInterior">
+        <option value="flat">Planque (dormir / sauvegarder)</option>
+        <option value="shop">Supérette</option>
+        <option value="guns">Armurerie</option>
+        <option value="hospital">Hôpital</option>
+        <option value="garage">Garage (réparation)</option>
+        <option value="club">Club</option>
+        <option value="clothes">Boutique de vêtements</option>
+        <option value="hair">Coiffeur</option>
+      </select>
+      <label>Nom affiché</label><input type="text" id="doorName" value="Planque">
+      <label>Lettre sur la mini-carte</label><input type="text" id="doorBlip" maxlength="2" value="P">
+      <label>Orientation (sens de sortie)</label><input type="range" id="doorFacing" min="0" max="360" value="0">
+      <div id="doorList" style="margin-top:10px;max-height:200px;overflow-y:auto"></div>
+    </fieldset>
+
+    <fieldset id="panel-parking" style="display:none">
+      <legend>Places de parking</legend>
+      <p class="sub" style="margin:0 0 8px">Clique sur le sol pour poser une place (voitures garées / trafic qui se gare).</p>
+      <label>Orientation</label><input type="range" id="parkHeading" min="0" max="360" value="0">
+      <div id="parkList" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+    </fieldset>
+
+    <fieldset id="panel-peds" style="display:none">
+      <legend>Zones de flânerie (piétons)</legend>
+      <p class="sub" style="margin:0 0 8px">Clique sur le sol pour poser une zone où des piétons se promènent.</p>
+      <label>Rayon</label><input type="range" id="pedR" min="10" max="120" value="30">
+      <div id="pedList" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+    </fieldset>
+
+    <fieldset id="panel-props" style="display:none">
+      <legend>Bibliothèque de modèles</legend>
+      <label>Importer un ou plusieurs .json — voir <code>modeles/batiments/</code> et <code>modeles/decors/</code></label>
+      <input type="file" id="fileLib" accept=".json" multiple>
+      <div id="libList" style="margin-top:8px;max-height:140px;overflow-y:auto"></div>
+      <p class="sub" style="margin:8px 0 0">Sélectionne un modèle puis clique au sol pour le placer.</p>
+    </fieldset>
+    <fieldset id="panel-instance" style="display:none">
+      <legend>Objet sélectionné</legend>
+      <div id="instName" style="font-weight:700;font-size:13px;margin-bottom:6px"></div>
+      <div class="row"><div><label>X</label><input type="number" id="iX" step="1"></div><div><label>Z</label><input type="number" id="iZ" step="1"></div></div>
+      <label>Rotation</label><input type="range" id="iRy" min="0" max="360" value="0">
+      <label>Échelle</label><input type="range" id="iScale" min="20" max="300" value="100">
+      <div class="row"><button class="btn-ghost" id="btnDup">Dupliquer</button><button class="btn-danger" id="btnDel">Supprimer</button></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Carte</legend>
+      <div id="counts" class="sub" style="margin:0 0 6px"></div>
+      <button class="btn-main" id="btnExport">Exporter carte.json</button>
+      <label style="margin-top:8px">Importer une carte existante</label>
+      <input type="file" id="fileMap" accept=".json">
+      <button class="btn-ghost" id="btnReset">Nouvelle carte</button>
+      <div id="status"></div>
+    </fieldset>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+// ---------- Rendu ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+$('viewport').appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1c2a30);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.5, 4000);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x33422a, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(200, 300, 150); scene.add(sun);
+
+function resize() { const r = $('viewport').getBoundingClientRect(); renderer.setSize(r.width, r.height); camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize);
+
+let camYaw = 0.8, camPitch = 0.9, camDist = 500, camTarget = new THREE.Vector3(0, 0, 0);
+let dragging = null, lastX = 0, lastY = 0, moved = false;
+renderer.domElement.addEventListener('pointerdown', e => { dragging = e.button === 2 ? 'pan' : 'rot'; lastX = e.clientX; lastY = e.clientY; moved = false; });
+addEventListener('pointerup', e => { if (dragging === 'rot' && !moved) onClickGround(e); dragging = null; });
+addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+  if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+  if (dragging === 'rot') { camYaw -= dx * 0.008; camPitch = Math.max(0.15, Math.min(1.5, camPitch - dy * 0.008)); }
+  else { const s = camDist * 0.0015; camTarget.x -= Math.cos(camYaw) * dx * s; camTarget.z -= Math.sin(camYaw) * dx * s; }
+});
+renderer.domElement.addEventListener('wheel', e => { camDist = Math.max(20, Math.min(2200, camDist * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+function updateCam() {
+  const cp = Math.cos(camPitch);
+  camera.position.set(camTarget.x + Math.cos(camYaw) * cp * camDist, camTarget.y + Math.sin(camPitch) * camDist, camTarget.z + Math.sin(camYaw) * cp * camDist);
+  camera.lookAt(camTarget);
+}
+
+// ---------- Sol de référence ----------
+const groundGroup = new THREE.Group(); scene.add(groundGroup);
+(function buildGround() {
+  const base = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0x2b3a34 }));
+  base.rotation.x = -Math.PI / 2; groundGroup.add(base);
+  const grid = new THREE.GridHelper(2400, 60, 0x445a52, 0x2f423c); grid.position.y = 0.05; groundGroup.add(grid);
+  const axes = new THREE.GridHelper(40, 2, 0xf2c230, 0xf2c230); axes.position.y = 0.1; groundGroup.add(axes);
+})();
+
+// ---------- Primitives (mêmes conventions que le jeu) ----------
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const PRISM = (() => {
+  const a = -0.5, b = 0.5, v = [[a, 0, -0.5], [a, 0, 0.5], [a, 1, 0], [b, 0, -0.5], [b, 0, 0.5], [b, 1, 0]];
+  const tris = [[0, 1, 2], [3, 5, 4], [0, 5, 3], [0, 2, 5], [1, 5, 2], [1, 4, 5], [0, 4, 1], [0, 3, 4]];
+  const pos = []; for (const t of tris) for (const i of t) pos.push(...v[i]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+})();
+const MATS = new Map();
+function matFor(color, cat) {
+  const key = color + '|' + cat; let m = MATS.get(key); if (m) return m;
+  const lit = cat === 'glassLit';
+  m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: cat === 'glass' || lit ? 0.12 : 0.85, metalness: cat === 'glass' || lit ? 0.5 : 0 });
+  if (lit) { m.emissive = new THREE.Color(0xffc06a); m.emissiveIntensity = 0.5; }
+  MATS.set(key, m); return m;
+}
+function meshFromPart(p) {
+  const color = typeof p.color === 'string' ? parseInt(p.color.replace('#', ''), 16) : p.color;
+  const cat = p.cat || 'base';
+  let m;
+  if (p.prim === 'cyl') { m = new THREE.Mesh(new THREE.CylinderGeometry(p.rt, p.rb, 1, p.seg || 12), matFor(color, cat)); m.scale.set(1, p.h, 1); }
+  else if (p.prim === 'sph') { m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), matFor(color, cat)); m.scale.set(p.r * (p.sx || 1), p.r * (p.sy || 1), p.r * (p.sz || 1)); }
+  else if (p.prim === 'prism') { m = new THREE.Mesh(PRISM, matFor(color, cat)); m.scale.set(p.len, p.h, p.depth); if (p.ry) m.rotation.y = p.ry; }
+  else { m = new THREE.Mesh(UNIT_BOX, matFor(color, cat)); m.scale.set(p.w, p.h, p.d); if (p.ry) m.rotation.y = p.ry; }
+  m.position.set(p.x, p.y, p.z); m.castShadow = true;
+  return m;
+}
+
+// ---------- État de la carte ----------
+let spawn = { x: 0, z: 0, facing: 0 };
+const roads = [];      // { points:[{x,z}], width, urban }
+const doors = [];      // { x,z, outX,outZ, name, interior, blip }
+const parking = [];    // { x,z, heading }
+const pedSpawns = [];  // { x,z, r }
+let LIBRARY = [], selectedLib = -1;
+let PLACED = [], selectedInst = -1;
+
+const markersGroup = new THREE.Group(); scene.add(markersGroup);
+const roadsGroup = new THREE.Group(); scene.add(roadsGroup);
+const propsGroup = new THREE.Group(); scene.add(propsGroup);
+
+function ring(x, z, color, r = 3) {
+  const g = new THREE.Mesh(new THREE.RingGeometry(r * 0.8, r, 24), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+  g.rotation.x = -Math.PI / 2; g.position.set(x, 0.3, z); return g;
+}
+function arrowMesh(x, z, angleRad, color) {
+  const g = new THREE.Mesh(new THREE.ConeGeometry(2.2, 6, 3), new THREE.MeshBasicMaterial({ color }));
+  g.rotation.x = -Math.PI / 2; g.position.set(x + Math.sin(angleRad) * 4, 0.35, z + Math.cos(angleRad) * 4); g.rotation.z = -angleRad; return g;
+}
+
+function redrawSpawn() {
+  markersGroup.children.filter(o => o.userData.kind === 'spawn').forEach(o => markersGroup.remove(o));
+  const r = ring(spawn.x, spawn.z, 0x37e0ff, 4); r.userData.kind = 'spawn'; markersGroup.add(r);
+  const a = arrowMesh(spawn.x, spawn.z, spawn.facing, 0x37e0ff); a.userData.kind = 'spawn'; markersGroup.add(a);
+}
+function redrawDoors() {
+  markersGroup.children.filter(o => o.userData.kind === 'door').forEach(o => markersGroup.remove(o));
+  doors.forEach((d, i) => {
+    const r = ring(d.x, d.z, 0xf2c230, d.interior === 'garage' ? 5 : 3); r.userData.kind = 'door'; r.userData.idx = i; markersGroup.add(r);
+    const angle = Math.atan2(d.outX, d.outZ);
+    const a = arrowMesh(d.x, d.z, angle, 0xf2c230); a.userData.kind = 'door'; markersGroup.add(a);
+  });
+}
+function redrawParking() {
+  markersGroup.children.filter(o => o.userData.kind === 'parking').forEach(o => markersGroup.remove(o));
+  parking.forEach(p => {
+    const r = ring(p.x, p.z, 0x56a8e8, 2.2); r.userData.kind = 'parking'; markersGroup.add(r);
+    const a = arrowMesh(p.x, p.z, p.heading, 0x56a8e8); a.userData.kind = 'parking'; markersGroup.add(a);
+  });
+}
+function redrawPeds() {
+  markersGroup.children.filter(o => o.userData.kind === 'ped').forEach(o => markersGroup.remove(o));
+  pedSpawns.forEach(w => { const r = ring(w.x, w.z, 0x93e27c, w.r); r.userData.kind = 'ped'; markersGroup.add(r); });
+}
+function redrawRoads() {
+  roadsGroup.clear();
+  const mat = new THREE.LineBasicMaterial({ color: 0xffffff });
+  for (const r of roads) {
+    if (r.points.length < 2) continue;
+    const pts = r.points.map(p => new THREE.Vector3(p.x, 0.4, p.z));
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    roadsGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: r.urban === false ? 0x888888 : 0xffe27a })));
+    for (const p of r.points) { const d = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a })); d.position.set(p.x, 0.4, p.z); roadsGroup.add(d); }
+  }
+}
+
+// ---------- Modes ----------
+let mode = 'spawn';
+const HINTS = {
+  spawn: 'Clique sur le sol pour placer le point de départ du joueur.',
+  routes: 'Clique pour ajouter un point à la route en cours (utilise « Nouvelle route » pour commencer).',
+  doors: 'Configure le type de porte à droite, puis clique sur le sol pour la placer.',
+  parking: 'Clique sur le sol pour poser une place de parking.',
+  peds: 'Clique sur le sol pour poser une zone de flânerie piétonne.',
+  props: 'Sélectionne un modèle dans la bibliothèque puis clique sur le sol pour le placer.'
+};
+function setMode(m) {
+  mode = m;
+  for (const id of ['spawn', 'routes', 'doors', 'parking', 'peds', 'props']) {
+    $('mode-' + id).classList.toggle('active', id === m);
+    $('panel-' + id).style.display = id === m ? 'block' : 'none';
+  }
+  $('panel-instance').style.display = (m === 'props' && selectedInst >= 0) ? 'block' : 'none';
+  $('hint').textContent = HINTS[m];
+}
+for (const id of ['spawn', 'routes', 'doors', 'parking', 'peds', 'props']) $('mode-' + id).onclick = () => setMode(id);
+
+// ---------- Raycast sol ----------
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function groundPoint(e) {
+  const r = $('viewport').getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObjects(groundGroup.children)[0];
+  return hit ? hit.point : null;
+}
+function onClickGround(e) {
+  if (mode === 'props') { onClickProps(e); return; }
+  const pt = groundPoint(e); if (!pt) return;
+  if (mode === 'spawn') { spawn.x = pt.x; spawn.z = pt.z; syncSpawnFields(); redrawSpawn(); }
+  else if (mode === 'routes') { addRoadPoint(pt.x, pt.z); }
+  else if (mode === 'doors') { addDoor(pt.x, pt.z); }
+  else if (mode === 'parking') { addParking(pt.x, pt.z); }
+  else if (mode === 'peds') { addPed(pt.x, pt.z); }
+  updateCounts();
+}
+
+// ---------- Départ ----------
+function syncSpawnFields() { $('spX').value = Math.round(spawn.x); $('spZ').value = Math.round(spawn.z); $('spFacing').value = Math.round(spawn.facing * 180 / Math.PI); }
+$('spX').oninput = () => { spawn.x = +$('spX').value; redrawSpawn(); };
+$('spZ').oninput = () => { spawn.z = +$('spZ').value; redrawSpawn(); };
+$('spFacing').oninput = () => { spawn.facing = +$('spFacing').value * Math.PI / 180; redrawSpawn(); };
+
+// ---------- Routes ----------
+let currentRoad = null;
+function addRoadPoint(x, z) {
+  if (!currentRoad) { currentRoad = { points: [], width: +$('roadWidth').value, urban: $('roadUrban').checked }; roads.push(currentRoad); }
+  currentRoad.points.push({ x, z }); redrawRoads(); renderRoadList();
+}
+$('btnNewRoad').onclick = () => { currentRoad = null; };
+$('btnUndoPoint').onclick = () => { if (currentRoad && currentRoad.points.length) currentRoad.points.pop(); redrawRoads(); renderRoadList(); };
+function renderRoadList() {
+  const box = $('roadList'); box.innerHTML = '';
+  roads.forEach((r, i) => {
+    const d = document.createElement('div'); d.className = 'listItem';
+    d.innerHTML = `<span>Route ${i + 1}<small>${r.points.length} points · largeur ${r.width}</small></span><button class="btn-danger" data-i="${i}">Suppr.</button>`;
+    d.querySelector('button').onclick = ev => { ev.stopPropagation(); roads.splice(i, 1); if (currentRoad === r) currentRoad = null; redrawRoads(); renderRoadList(); updateCounts(); };
+    box.appendChild(d);
+  });
+}
+
+// ---------- Portes ----------
+function addDoor(x, z) {
+  const facing = +$('doorFacing').value * Math.PI / 180;
+  const interior = $('doorInterior').value;
+  doors.push({ x, z, outX: Math.sin(facing), outZ: Math.cos(facing), name: $('doorName').value || interior, interior, blip: $('doorBlip').value || interior[0].toUpperCase() });
+  redrawDoors(); renderDoorList();
+}
+$('doorInterior').onchange = () => {
+  const names = { flat: 'Planque', shop: 'Supérette', guns: 'Armurerie', hospital: 'Hôpital', garage: 'Garage', club: 'Club', clothes: 'Boutique', hair: 'Coiffeur' };
+  const blips = { flat: 'P', shop: 'S', guns: 'A', hospital: 'H', garage: 'G', club: 'N', clothes: 'V', hair: 'C' };
+  $('doorName').value = names[$('doorInterior').value]; $('doorBlip').value = blips[$('doorInterior').value];
+};
+function renderDoorList() {
+  const box = $('doorList'); box.innerHTML = '';
+  doors.forEach((d, i) => {
+    const el = document.createElement('div'); el.className = 'listItem';
+    el.innerHTML = `<span>${d.name}<small>${d.interior}</small></span><button class="btn-danger" data-i="${i}">Suppr.</button>`;
+    el.querySelector('button').onclick = ev => { ev.stopPropagation(); doors.splice(i, 1); redrawDoors(); renderDoorList(); updateCounts(); };
+    box.appendChild(el);
+  });
+}
+
+// ---------- Parkings ----------
+function addParking(x, z) { parking.push({ x, z, heading: +$('parkHeading').value * Math.PI / 180 }); redrawParking(); renderParkList(); }
+function renderParkList() {
+  const box = $('parkList'); box.innerHTML = '';
+  parking.forEach((p, i) => {
+    const el = document.createElement('div'); el.className = 'listItem';
+    el.innerHTML = `<span>Place ${i + 1}</span><button class="btn-danger" data-i="${i}">Suppr.</button>`;
+    el.querySelector('button').onclick = ev => { ev.stopPropagation(); parking.splice(i, 1); redrawParking(); renderParkList(); updateCounts(); };
+    box.appendChild(el);
+  });
+}
+
+// ---------- Zones piétonnes ----------
+function addPed(x, z) { pedSpawns.push({ x, z, r: +$('pedR').value }); redrawPeds(); renderPedList(); }
+function renderPedList() {
+  const box = $('pedList'); box.innerHTML = '';
+  pedSpawns.forEach((w, i) => {
+    const el = document.createElement('div'); el.className = 'listItem';
+    el.innerHTML = `<span>Zone ${i + 1}<small>rayon ${w.r}</small></span><button class="btn-danger" data-i="${i}">Suppr.</button>`;
+    el.querySelector('button').onclick = ev => { ev.stopPropagation(); pedSpawns.splice(i, 1); redrawPeds(); renderPedList(); updateCounts(); };
+    box.appendChild(el);
+  });
+}
+
+// ---------- Bibliothèque de modèles (bâtiments/décors) ----------
+function renderLibrary() {
+  $('libList').innerHTML = '';
+  LIBRARY.forEach((entry, i) => {
+    const d = document.createElement('div');
+    d.className = 'listItem' + (i === selectedLib ? ' sel' : '');
+    d.innerHTML = `<span>${entry.model.name || 'Sans nom'}<small>${entry.model.kind || '?'} · ${entry.model.parts.length} pièces</small></span>`;
+    d.onclick = () => { selectedLib = i; renderLibrary(); };
+    $('libList').appendChild(d);
+  });
+}
+$('fileLib').onchange = async e => {
+  for (const f of e.target.files) {
+    try { const model = JSON.parse(await f.text()); if (Array.isArray(model.parts)) LIBRARY.push({ model }); }
+    catch (err) { setStatus('Fichier ignoré (' + f.name + ') : ' + err.message, false); }
+  }
+  renderLibrary(); e.target.value = '';
+};
+
+// ---------- Objets placés ----------
+function rebuildInstance(inst) {
+  if (inst.group) propsGroup.remove(inst.group);
+  const g = new THREE.Group();
+  for (const p of inst.model.parts) g.add(meshFromPart(p));
+  g.position.set(inst.x, 0, inst.z); g.rotation.y = inst.ry; g.scale.setScalar(inst.scale);
+  g.userData.inst = inst; inst.group = g; propsGroup.add(g);
+}
+function addInstance(model, x, z) { const inst = { model, x, z, ry: 0, scale: 1 }; rebuildInstance(inst); PLACED.push(inst); return inst; }
+function selectInstance(idx) {
+  selectedInst = idx;
+  $('panel-instance').style.display = idx >= 0 ? 'block' : 'none';
+  if (idx < 0) return;
+  const inst = PLACED[idx];
+  $('instName').textContent = inst.model.name || 'Sans nom';
+  $('iX').value = Math.round(inst.x); $('iZ').value = Math.round(inst.z);
+  $('iRy').value = Math.round(inst.ry * 180 / Math.PI); $('iScale').value = Math.round(inst.scale * 100);
+}
+for (const [id, key] of [['iX', 'x'], ['iZ', 'z']]) $(id).oninput = () => { if (selectedInst < 0) return; PLACED[selectedInst][key] = +$(id).value; rebuildInstance(PLACED[selectedInst]); };
+$('iRy').oninput = () => { if (selectedInst < 0) return; PLACED[selectedInst].ry = +$('iRy').value * Math.PI / 180; rebuildInstance(PLACED[selectedInst]); };
+$('iScale').oninput = () => { if (selectedInst < 0) return; PLACED[selectedInst].scale = +$('iScale').value / 100; rebuildInstance(PLACED[selectedInst]); };
+$('btnDup').onclick = () => { if (selectedInst < 0) return; const src = PLACED[selectedInst]; const inst = addInstance(src.model, src.x + 6, src.z + 6); inst.ry = src.ry; inst.scale = src.scale; rebuildInstance(inst); selectInstance(PLACED.length - 1); updateCounts(); };
+$('btnDel').onclick = () => { if (selectedInst < 0) return; propsGroup.remove(PLACED[selectedInst].group); PLACED.splice(selectedInst, 1); selectInstance(-1); updateCounts(); };
+function onClickProps(e) {
+  const r = $('viewport').getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const hitInst = raycaster.intersectObjects(propsGroup.children, true)[0];
+  if (hitInst) { let o = hitInst.object; while (o && !o.userData.inst) o = o.parent; if (o) { selectInstance(PLACED.indexOf(o.userData.inst)); return; } }
+  if (selectedLib < 0) { setStatus('Sélectionne un modèle dans la bibliothèque avant de placer.', false); return; }
+  const hitGround = raycaster.intersectObjects(groundGroup.children)[0]; if (!hitGround) return;
+  addInstance(LIBRARY[selectedLib].model, hitGround.point.x, hitGround.point.z);
+  selectInstance(PLACED.length - 1); updateCounts();
+}
+
+// ---------- Export / import ----------
+function setStatus(msg, ok) { const s = $('status'); s.textContent = msg; s.className = ok ? 'ok' : ''; }
+function updateCounts() { $('counts').textContent = `${roads.length} route(s) · ${doors.length} porte(s) · ${parking.length} place(s) · ${pedSpawns.length} zone(s) piéton · ${PLACED.length} objet(s)`; }
+$('btnExport').onclick = () => {
+  const data = { spawn, roads: roads.map(r => ({ points: r.points, width: r.width, urban: r.urban })), doors, parking, pedSpawns, props: PLACED.map(inst => ({ x: inst.x, z: inst.z, ry: inst.ry, scale: inst.scale, model: inst.model })) };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'carte.json'; a.click();
+  setStatus('carte.json téléchargé. Place-le à côté du jeu (et lance-le via serveur.py).', true);
+};
+$('fileMap').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (j.spawn) spawn = j.spawn;
+    roads.length = 0; if (Array.isArray(j.roads)) roads.push(...j.roads.map(r => ({ points: r.points || [], width: r.width || 12, urban: r.urban !== false })));
+    doors.length = 0; if (Array.isArray(j.doors)) doors.push(...j.doors);
+    parking.length = 0; if (Array.isArray(j.parking)) parking.push(...j.parking);
+    pedSpawns.length = 0; if (Array.isArray(j.pedSpawns)) pedSpawns.push(...j.pedSpawns);
+    PLACED.forEach(inst => propsGroup.remove(inst.group)); PLACED = [];
+    if (Array.isArray(j.props)) for (const p of j.props) { const inst = addInstance(p.model, p.x, p.z); inst.ry = p.ry || 0; inst.scale = p.scale || 1; rebuildInstance(inst); }
+    currentRoad = null;
+    syncSpawnFields(); redrawSpawn(); redrawRoads(); redrawDoors(); redrawParking(); redrawPeds();
+    renderRoadList(); renderDoorList(); renderParkList(); renderPedList();
+    selectInstance(-1); updateCounts();
+    setStatus('Carte importée.', true);
+  } catch (err) { setStatus('Import impossible : ' + err.message, false); }
+  e.target.value = '';
+};
+$('btnReset').onclick = () => {
+  spawn = { x: 0, z: 0, facing: 0 };
+  roads.length = 0; doors.length = 0; parking.length = 0; pedSpawns.length = 0; currentRoad = null;
+  PLACED.forEach(inst => propsGroup.remove(inst.group)); PLACED = []; selectInstance(-1);
+  syncSpawnFields(); redrawSpawn(); redrawRoads(); redrawDoors(); redrawParking(); redrawPeds();
+  renderRoadList(); renderDoorList(); renderParkList(); renderPedList(); updateCounts();
+  setStatus('Nouvelle carte.', true);
+};
+
+syncSpawnFields(); redrawSpawn(); setMode('spawn'); updateCounts(); resize();
+(function loop() { updateCam(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
