@@ -257,23 +257,34 @@ $('btnSave').onclick = () => {
   a.download = (data.name || 'batiment').toLowerCase().replace(/[^a-z0-9]+/g, '_') + '.json'; a.click();
   setStatus('Modèle exporté.', true);
 };
+function loadModel(j, label) {
+  if (!Array.isArray(j.parts)) throw new Error('format invalide (pas de "parts")');
+  parts = j.parts.map(p => Object.assign({ id: nextId++ }, p));
+  $('modelName').value = j.name || 'Bâtiment';
+  rebuildScene(); renderPartList(); selectPart(-1);
+  setStatus((label || 'Modèle importé') + ' (' + parts.length + ' pièces).', true);
+}
 $('fileLoad').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  try {
-    const j = JSON.parse(await f.text());
-    if (!Array.isArray(j.parts)) throw new Error('format invalide (pas de "parts")');
-    parts = j.parts.map(p => Object.assign({ id: nextId++ }, p));
-    $('modelName').value = j.name || 'Bâtiment';
-    rebuildScene(); renderPartList(); selectPart(-1);
-    setStatus('Modèle importé (' + parts.length + ' pièces).', true);
-  } catch (err) { setStatus('Import impossible : ' + err.message, false); }
+  try { loadModel(JSON.parse(await f.text())); }
+  catch (err) { setStatus('Import impossible : ' + err.message, false); }
   e.target.value = '';
 };
 $('btnNew').onclick = () => { parts = []; nextId = 1; $('modelName').value = 'Nouveau bâtiment'; rebuildScene(); renderPartList(); selectPart(-1); setStatus('Nouveau modèle.', true); };
 
-// modèle de départ pour ne pas partir d'un écran vide
-addPart('box'); Object.assign(parts[0], { w: 6, h: 3, d: 5, y: 1.5, color: '#e9dcc3' }); rebuildScene(); selectPart(0);
-renderPartList(); resize();
+// modèle de départ pour ne pas partir d'un écran vide, sauf si on nous demande d'en ouvrir un
+// (venant du gestionnaire de modèles : editeur_batiments_3d.html?open=modeles/batiments/xxx.json)
+const openParam = new URLSearchParams(location.search).get('open');
+if (openParam) {
+  fetch(openParam).then(r => r.json()).then(j => loadModel(j, 'Modèle ouvert')).catch(err => {
+    setStatus('Impossible d\'ouvrir ' + openParam + ' : ' + err.message, false);
+    addPart('box'); Object.assign(parts[0], { w: 6, h: 3, d: 5, y: 1.5, color: '#e9dcc3' }); rebuildScene(); selectPart(0); renderPartList();
+  });
+} else {
+  addPart('box'); Object.assign(parts[0], { w: 6, h: 3, d: 5, y: 1.5, color: '#e9dcc3' }); rebuildScene(); selectPart(0);
+  renderPartList();
+}
+resize();
 (function loop() { updateCam(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
 </script>
 </body>
