@@ -976,16 +976,19 @@ function shopBuilding(x0, x1, z0, z1, floors, wall, face, opts = {}) {
   };
   const along0 = face === 'N' || face === 'S' ? cx : cz, len = (face === 'N' || face === 'S' ? w : d) * 0.8;
   glassBand(along0, len);
-  for (let f = 1; f < floors; f++) {
-    const n = Math.max(2, Math.round(len / 3.2));
+  const winsOnFace = (fc, f) => {
+    const isNS = fc === 'N' || fc === 'S';
+    const a0 = isNS ? cx : cz, l = (isNS ? w : d) * 0.8;
+    const n = Math.max(2, Math.round(l / 3.2));
     for (let i = 0; i < n; i++) {
-      const a = along0 - len / 2 + (i + 0.5) * len / n;
+      const a = a0 - l / 2 + (i + 0.5) * l / n;
       const win = box(1, 1, 1, 0x2c3d4a, 0, 0, 0, wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
-      if (face === 'N' || face === 'S') { win.scale.set(1.3, 1.5, 0.2); win.position.set(a, 4.4 + (f - 1) * 3.3 + 1.6, face === 'N' ? z0 - 0.05 : z1 + 0.05); }
-      else { win.scale.set(0.2, 1.5, 1.3); win.position.set(face === 'W' ? x0 - 0.05 : x1 + 0.05, 4.4 + (f - 1) * 3.3 + 1.6, a); }
+      if (isNS) { win.scale.set(1.3, 1.5, 0.2); win.position.set(a, 4.4 + (f - 1) * 3.3 + 1.6, fc === 'N' ? z0 - 0.05 : z1 + 0.05); }
+      else { win.scale.set(0.2, 1.5, 1.3); win.position.set(fc === 'W' ? x0 - 0.05 : x1 + 0.05, 4.4 + (f - 1) * 3.3 + 1.6, a); }
       staticRoot.add(win);
     }
-  }
+  };
+  for (let f = 1; f < floors; f++) for (const fc of ['N', 'S', 'E', 'W']) winsOnFace(fc, f);
   if (opts.awning !== false) {
     const aw = box(1, 1, 1, opts.awning || wpick(AWN), 0, 0, 0);
     const fd = FACE_DIR[face];
@@ -1238,6 +1241,11 @@ function hotel(x0, x1, z0, z1, floors, name, face) {
         K.box(2.2, 1.9, 0.2, 0x2c3d4a, x, y + 1.4, face === 'N' ? z0 - 0.05 : z1 + 0.05, wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
       }
     }
+    // fenêtres simples sur les façades qui n'ont pas déjà reçu un traitement ci-dessus, pour éviter un mur aveugle
+    if (face !== 'W') for (let i = 0; i < Math.round(d / 4); i++) K.box(0.2, 1.9, 2.2, 0x2c3d4a, x0 - 0.05, y + 1.4, z0 + 2 + i * (d - 4) / Math.max(1, Math.round(d / 4) - 1), wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
+    if (!east) for (let i = 0; i < Math.round(d / 4); i++) K.box(0.2, 1.9, 2.2, 0x2c3d4a, x1 + 0.05, y + 1.4, z0 + 2 + i * (d - 4) / Math.max(1, Math.round(d / 4) - 1), wr(0, 1) < 0.5 ? 'glassLit' : 'glass');
+    if (face !== 'N') for (let i = 0; i < Math.round(w / 4); i++) { const x = x0 + 2 + i * (w - 4) / Math.max(1, Math.round(w / 4) - 1); K.box(2.2, 1.9, 0.2, 0x2c3d4a, x, y + 1.4, z0 - 0.05, wr(0, 1) < 0.5 ? 'glassLit' : 'glass'); }
+    if (face !== 'S') for (let i = 0; i < Math.round(w / 4); i++) { const x = x0 + 2 + i * (w - 4) / Math.max(1, Math.round(w / 4) - 1); K.box(2.2, 1.9, 0.2, 0x2c3d4a, x, y + 1.4, z1 + 0.05, wr(0, 1) < 0.5 ? 'glassLit' : 'glass'); }
   }
   const s = signMesh('Hôtel ' + name, Math.min(w, d) * 0.8, 2.2, '#f5f2ea', '#1d4f9e', { upright: true });
   if (east) { s.position.set(cx, H + 2.2, cz); s.rotation.y = Math.PI / 2; s.position.x = x1 + 0.2; }
