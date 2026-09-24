@@ -46,7 +46,7 @@
   </div>
   <div id="panel">
     <h1>Éditeur de <span>bâtiments</span></h1>
-    <div class="sub">Outil séparé du jeu — sert à régler l'apparence des bâtiments procéduraux (façades, fenêtres, hauteur) avant de reporter les valeurs dans <code>bulle_de_route.html</code>.</div>
+    <div class="sub">Outil séparé du jeu — sert à régler l'apparence des bâtiments procéduraux (façades, fenêtres, hauteur) avant de reporter les valeurs dans <code>index.html</code>.</div>
 
     <fieldset>
       <legend>Type</legend>
@@ -196,7 +196,7 @@ function opts() {
 
 function faceActive(o, f) { return o.allFaces || o.faces[f]; }
 
-// ---------- Générateurs (repris et paramétrés depuis bulle_de_route.html) ----------
+// ---------- Générateurs (repris et paramétrés depuis index.html) ----------
 function genTower(o) {
   SEED = o.seed;
   const w = o.w, d = o.d, floors = o.floors, FH = 3.3, GF = 4.4, H = GF + floors * FH;

@@ -4221,11 +4221,16 @@ async function boot() {
   $('loadWrap').style.display = 'none'; $('menuBtns').style.display = 'flex';
   const save = loadSave();
   if (save) { $('btnContinue').style.display = 'inline-block'; }
-  $('btnNew').onclick = () => startGame(null);
-  $('btnContinue').onclick = () => startGame(save);
+  $('btnNew').onclick = e => { e.currentTarget.blur(); startGame(null); };
+  $('btnContinue').onclick = e => { e.currentTarget.blur(); startGame(save); };
   if ('ontouchstart' in window && !matchMedia('(pointer:fine)').matches) $('touchNote').style.display = 'block';
 }
+// les boutons du menu-titre restent dans le DOM une fois masqués (juste opacity:0 + pointer-events:none) ;
+// s'ils gardaient le focus clavier, une touche qui « clique » un bouton focalisé (Entrée…) pouvait
+// relancer startGame() en pleine partie et donner l'impression que le jeu réinitialise les PNJ /
+// rejoue le bandeau noir d'intro sans raison. Le blur() ci-dessus + ce garde-fou couvrent les deux angles.
 function startGame(save) {
+  if (state === 'play') return;
   AU.init();
   if (save) {
     Object.assign(player, { money: save.money, ammo: save.ammo || 0, armor: save.armor || 0, health: save.health || 100, day: save.day || 1 });

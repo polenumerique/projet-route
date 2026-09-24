@@ -65,7 +65,7 @@
     </fieldset>
     <fieldset>
       <legend>Fichier de carte</legend>
-      <p class="hint">Exporte <code>carte.json</code> et place-le à côté de <code>bulle_de_route.html</code> (sur un serveur local — <code>file://</code> direct ne permet pas au jeu de le charger). Au démarrage, le jeu essaie de lire ce fichier ; s'il est absent, il garde sa carte par défaut.</p>
+      <p class="hint">Exporte <code>carte.json</code> et place-le à côté de <code>index.html</code> (sur un serveur local — <code>file://</code> direct ne permet pas au jeu de le charger). Au démarrage, le jeu essaie de lire ce fichier ; s'il est absent, il garde sa carte par défaut.</p>
       <div class="row">
         <button class="btn-main" id="btnExport">Exporter carte.json</button>
         <label class="btn-ghost" style="cursor:pointer">Importer<input type="file" id="fileImport" accept=".json" style="display:none"></label>
@@ -131,7 +131,7 @@ function cycle(i, j) {
 function setStatus(msg, ok) { const s = $('status'); s.textContent = msg; s.className = ok ? 'ok' : ''; }
 
 $('btnExport').onclick = () => {
-  const data = { zoneGrid: grid, note: 'Généré par editeur_carte.html — à placer à côté de bulle_de_route.html' };
+  const data = { zoneGrid: grid, note: 'Généré par editeur_carte.html — à placer à côté de index.html' };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'carte.json'; a.click();

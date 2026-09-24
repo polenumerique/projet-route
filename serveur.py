@@ -15,7 +15,7 @@ Utilisation :
               python3 serveur.py
 
 Le script ouvre ensuite automatiquement le jeu dans le navigateur par
-défaut, à l'adresse http://localhost:8000/bulle_de_route.html
+défaut, à l'adresse http://localhost:8000/index.html
 Pour arrêter le serveur : Ctrl+C dans la fenêtre du terminal.
 """
 import http.server
@@ -26,7 +26,7 @@ import threading
 import webbrowser
 
 PORT = 8000
-PAGE = 'bulle_de_route.html'
+PAGE = 'index.html'
 
 
 def port_disponible(port):
